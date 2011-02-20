@@ -23,19 +23,20 @@ import copy
 
 class APIGateway:
     """
-    The interface with the foursquare API. All HTTP queries to the API
-    should be carried out through a single gateway. 
+    An object that interfaces with the foursquare API. All HTTP queries to the 
+    API should be carried out through a single gateway. 
     
     Supports multiple access tokens. API calls are distributed evenly
-    across all available access tokens.
+    across all available access tokens. This is done simply cycling though 
+    the access tokens.
     
     Provides local query rate limiting. If specified, the gateway will delay 
     issuing API queries to prevent exceeding the hourly request quota of a 
-    token. 
+    token.
     
     The rate limiting may be improved with the knowledge that the foursquare
-    rate limit is a limit per endpoint, rather than a global limit. For now, 
-    a global limit is assumed.
+    rate limit is a limit per endpoint, rather than a limit per access token. 
+    For now, a limit per token is assumed.
     """
     
     def __init__( self, access_tokens, token_hourly_query_quota=None ):
@@ -103,10 +104,8 @@ class APIGateway:
         #
         # Do sleep for delay query if necessary...
         if self.query_interval is not None:
-            print "~limiting..."
             while time.time() < self.earliest_query_time:
                 sleep_dur = self.earliest_query_time - time.time()
-                print "~sleep for... "  + str( sleep_dur )
                 time.sleep( sleep_dur )
                 #~ Potential for scheduler thrashing if time difference
                 #  is tiny? Near-zero millis rounded down => repeated looping?
@@ -152,12 +151,6 @@ class APIGateway:
         
         #
         # Fin
-        print "~"
-        print "Issued following query... "
-        print "\tURL  \t%s" % (url)
-        print "\tat   \t%s" % (time.time())
-        print "\token \t%s" % (token)
-        print "~"
         return py_data
         
 
@@ -177,10 +170,14 @@ class RateLimitExceededError( FoursquareRequestError ):
 
 class APIWrapper( object ):
     """
-    A simple wrapper for issuing queries to the foursquare API.
+    A simple wrapper providing some higher level API functionality.
     """
     
     def __init__( self, gateway ):
+        """
+        `gateway` should be an `APIGateway` object, through which all
+        API queries will be issued.
+        """
         self.gateway = gateway
         
     def query_resource( self, resource_type, id, aspect=None, get_params={} ):
@@ -252,8 +249,8 @@ class APIWrapper( object ):
 
 
 if __name__ == "__main__":
-    import _mycredentials
-    tokens = [ _mycredentials.access_token1, _mycredentials.access_token2]
+    import _credentials
+    tokens = [ _credentials.access_token1, _credentials.access_token2]
     gateway = APIGateway( tokens )
     api = APIWrapper( gateway )
     
@@ -271,15 +268,17 @@ if __name__ == "__main__":
         print v['name']
     
     print "Try out some API limiting..."
-    print "Start time: %s" % time.time()
     gateway = APIGateway( tokens, 60 )   
     gateway = APIGateway( tokens, 28800 )
     gateway = APIGateway( tokens[0], 500 )
     # 60 reqs per hour per token for two tokens => 1 req per 30 secs   
     # 28,800 reqs per hour per token for two tokens => 1 req per 0.25 secs
-    # 500 reqs per hour per token for one token => 1 req per 72 secs
+    # 500 reqs per hour per token for one token => 1 req per 7.2 secs
     
     api = APIWrapper( gateway )
+
+    print "Start time: %s" % time.time()
+    print "(About to issue 5 queries...)"
     for _ in range(5):
         api.query_resource( "venues", "591313" )
     print "Finish time: %s" % time.time()
