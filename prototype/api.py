@@ -17,25 +17,26 @@
 
 import time
 import json
-import urllib, urllib2
+import urllib
+import urllib2
 import copy
 
 
 class APIGateway:
     """
-    An object that interfaces with the foursquare API. All HTTP queries to the 
-    API should be carried out through a single gateway. 
+    An object that interfaces with the foursquare API. All HTTP queries to the
+    API should be carried out through a single gateway.
     
     Supports multiple access tokens. API calls are distributed evenly
-    across all available access tokens. This is done simply cycling though 
+    across all available access tokens. This is done simply cycling though
     the access tokens.
     
-    Provides local query rate limiting. If specified, the gateway will delay 
-    issuing API queries to prevent exceeding the hourly request quota of a 
+    Provides local query rate limiting. If specified, the gateway will delay
+    issuing API queries to prevent exceeding the hourly request quota of a
     token.
     
     The rate limiting may be improved with the knowledge that the foursquare
-    rate limit is a limit per endpoint, rather than a limit per access token. 
+    rate limit is a limit per endpoint, rather than a limit per access token.
     For now, a limit per token is assumed.
     """
     
@@ -44,7 +45,7 @@ class APIGateway:
         `access_tokens` may be a sequence of access tokens or a single
         access token (i.e., string).
         
-        `token_hourly_query_quota` is the maximum number of queries per hour 
+        `token_hourly_query_quota` is the maximum number of queries per hour
         for a single access token. Thus, the max number of queries per hour
         is given by
             len( access_tokens ) * token_hourly_query_quota .
@@ -64,7 +65,7 @@ class APIGateway:
         # Query delaying...
         if token_hourly_query_quota is not None:
             max_per_hour = token_hourly_query_quota * len( access_tokens )
-            query_interval = ( 60*60 ) / float( max_per_hour )   # in seconds
+            query_interval = ( 60 * 60 ) / float( max_per_hour )   # in seconds
             
             self.earliest_query_time = time.time()   # as secs since unix epoch
             self.query_interval = query_interval
@@ -75,7 +76,7 @@ class APIGateway:
         
         #
         # URL...
-        scheme = 'http://'
+        scheme = 'https://'
         netloc = 'api.foursquare.com'
         path_prefix = '/v2'
         self.api_base_url = scheme + netloc + path_prefix 
@@ -85,15 +86,15 @@ class APIGateway:
         Issue a query to the foursquare web service.
         
         This method will handle inserting an access_token; thus, a token should
-        not be included in the inputted GET parameters. Such a parameter will be
-        overwritten. 
+        not be included in the inputted GET parameters. Such a parameter will
+        be overwritten.
         
         `get_params` is the GET parameters; a dictionary.
         
         `path_suffix` is appended to the API's base path. The left-most
         '/' is inserted if absent.
         
-        If query is successful the method returns JSON data encoded as 
+        If query is successful the method returns JSON data encoded as
         python objects via `json.loads()`.
         This method interprets any errors returned by the query and raises
         errors accordingly.
@@ -122,8 +123,9 @@ class APIGateway:
         
         try:
             response = urllib2.urlopen( url )
-        except URLError, e:
-            # May wish to handle in future
+        except urllib2.HTTPError, e:
+            raise e
+        except urllib2.URLError, e:
             raise e
         
         raw_data = response.read()
@@ -155,12 +157,12 @@ class APIGateway:
         
 
 class FoursquareRequestError( RuntimeError ):
-    def __init__(self, response_code, error_type, error_detail ):
+    def __init__( self, response_code, error_type, error_detail ):
         self.response_code = response_code
         self.error_type = error_type
         self.error_detail = error_detail 
         
-    def __str__(self):
+    def __str__( self ):
         return "%s:%s" % ( self.response_code, self.error_type )
 
 
@@ -182,24 +184,24 @@ class APIWrapper( object ):
         
     def query_resource( self, resource_type, id, aspect=None, get_params={} ):
         """
-        Issue a query regarding a resource with a specific ID. 
+        Issue a query regarding a resource with a specific ID.
         
         Not all queries require a resource ID. For issuing queries that do not
         take an ID see `query_method`.
         
-        See http://developer.foursquare.com/docs/index_docs.html for more 
+        See http://developer.foursquare.com/docs/index_docs.html for more
         information.
         
         This method does not handle queries involving POST parameters.
         
         Parmameters as follows...
         `resource_type`
-            The type of the resource. E.g., users, venues, 
+            The type of the resource. E.g., users, venues,
             checkins, etc.
         `id`
             The identifier for an instance of the resource.
         `aspect`
-            Aspects are data items connected to an instance of a resource. If 
+            Aspects are data items connected to an instance of a resource. If
             an aspect is not specified then the resource itself is returned.
         `get_params`
             The GET parameters for the query. A dictionary.
@@ -214,8 +216,7 @@ class APIWrapper( object ):
         if aspect:
             path_suffix += "/%s" % aspect
         
-        return self.gateway.query( path_suffix,get_params )
-        
+        return self.gateway.query( path_suffix, get_params )
         
     def query_routine( self, resource_type, routine, get_params={} ):
         """
@@ -224,13 +225,13 @@ class APIWrapper( object ):
         (N.B. 'routine' is my own term. It is not the same as foursquare
         actions.)
         
-        See http://developer.foursquare.com/docs/index_docs.html for more 
+        See http://developer.foursquare.com/docs/index_docs.html for more
         information.
         
         This method does not handle queries involving POST parameters.
         
-        `resource_type`: 
-            The type of the resource. E.g., users, venues, 
+        `resource_type`:
+            The type of the resource. E.g., users, venues,
             checkins, etc.
         `routine`:
             The routine associated with the resource type.
@@ -245,12 +246,61 @@ class APIWrapper( object ):
         path_suffix = "/%s" % resource_type
         path_suffix += "/%s" % routine
         
-        return self.gateway.query( path_suffix,get_params )
+        return self.gateway.query( path_suffix, get_params )
+        
+    def find_venues_near( self, lat, long, limit=50 ):
+        """
+        Call to the venue search method to find venues near a given latitude
+        and longitude.
+        
+        `lat` and `long` can be numbers or strings containing numbers.
+        
+        The venue search method also returns 'trending' places. These are
+        discarded.
+        
+        Returns a ~?~.
+        """
+        #
+        # Issue query... 
+        ll_str = "%f,%f" % ( float(lat), float(long) )
+        get_qry = { 'll': ll_str, 'intent': 'checkin', 'limit': limit }
+        data = self.query_routine( "venues", "search", get_qry )
+        
+        #
+        # Parse hierarchy to grab list of venues...
+        response = data['response']  # a dict
+        groups = response['groups']  # a list
+        
+        trending = None
+        nearby = None
+        for group in groups:
+            if group['type'] == 'trending':
+                trending = group  # a three-field dict specifying a collection
+            if group['type'] == 'nearby':
+                nearby = group  # a three-field dict specifying a collection
+        
+        nearby = nearby['items']  # a list of nearby venues
+        
+        #
+        # Process the list of venues...
+        
+        """
+        ~
+        For Martin:
+        Do what you need to do! :)
+        Don't forget that venue results include a 'distance' value in the
+        venue's location dict. This specifies the venue's distance from the 
+        search target
+        ~
+        """
+        venues = nearby  # change as necessary. list of dicts for now.
+        
+        return venues
 
 
 if __name__ == "__main__":
     import _credentials
-    tokens = [ _credentials.access_token1, _credentials.access_token2]
+    tokens = _credentials.access_tokens
     gateway = APIGateway( tokens )
     api = APIWrapper( gateway )
     
@@ -261,9 +311,7 @@ if __name__ == "__main__":
     print 
     
     print "Search for venues near a given location..."
-    reply = api.query_routine( "venues", "search", {'ll':'51.4777,-3.1844'} )
-    data = reply['response']
-    venues = data['groups'][0]['items']
+    venues = api.find_venues_near( 51.4777, -3.1844 )
     for v in venues:
         print v['name']
     
@@ -282,6 +330,3 @@ if __name__ == "__main__":
     for _ in range(5):
         api.query_resource( "venues", "591313" )
     print "Finish time: %s" % time.time()
-    
-    
-    
