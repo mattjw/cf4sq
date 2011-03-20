@@ -23,7 +23,7 @@ from urllib2 import HTTPError
 import datetime
 import time
 
-def search_venues( lat, lng, delta, num_venues=1000 ):
+def search_venues( lat, lng, delta, num_venues=5000 ):
 	"""
 	Searches for venues in foursquare. Starts at a given point ('lat,'lng') moving outwards, until the 
 	given 'num_venues' are found. 'delta' is used to tune the distance that searches are made away from a central point.
@@ -123,7 +123,7 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 			# get some new start points away from this point
 			points = get_points_surrounding( point, delta )
 			for point in points:
-				if not point in start_points:
+				if not point in start_points and not point in checked_points:
 					start_points.append( point )
 					print 'new start point: %.7f, %.7f' % ( float( point['lat'] ), float( point['lng'] ) )
 		# found new venues, so search this area more
@@ -144,8 +144,6 @@ def get_venues_near( lat, lng, api ):
 		print e
 		if e.code == 403:
 			time.sleep(60*60*15)
-	except Error as e:
-		print e
 	return venues
 
 if __name__ == "__main__":
