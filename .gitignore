@@ -4,3 +4,4 @@
 *_db_test.py
 *_clear_database.py
 *_tests.py
+*.db
