@@ -1,3 +1,6 @@
 *_credentials.py
 *.pyc
 .DS_Store
+*_db_test.py
+*_clear_database.py
+*_tests.py
