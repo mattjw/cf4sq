@@ -20,6 +20,7 @@ from api import *
 from venues_api import VenueAPIGateway
 from decimal import *
 from urllib2 import HTTPError
+from random import randint
 import datetime
 import time
 
@@ -52,7 +53,7 @@ def search_venues( lat, lng, delta, num_venues=5000 ):
 
 def get_points_surrounding( point, delta ):
 	"""
-	Get the 8 points surrounding the given central 'point' 'delta' distance away in the 8 cardinal directions 
+	Get the points surrounding the given central 'point' 'delta' distance away 
 	"""
 	points = []
 	points.append( point )
@@ -61,13 +62,21 @@ def get_points_surrounding( point, delta ):
 	lng = point['lng']
 
 	points.append( {'lat':lat, 'lng':lng+delta} )
+	points.append( {'lat':lat, 'lng':lng+delta/2})
 	points.append( {'lat':lat+delta, 'lng':lng+delta} )
+	points.append( {'lat':lat+delta/2, 'lng':lng+delta/2} )
 	points.append( {'lat':lat+delta, 'lng':lng} )
+	points.append( {'lat':lat+delta/2, 'lng':lng} )
 	points.append( {'lat':lat+delta, 'lng':lng-delta} )
+	points.append( {'lat':lat+delta/2, 'lng':lng-delta/2} )
 	points.append( {'lat':lat, 'lng':lng-delta} )
+	points.append( {'lat':lat, 'lng':lng-delta/2} )
 	points.append( {'lat':lat-delta, 'lng':lng-delta} )
+	points.append( {'lat':lat-delta/2, 'lng':lng-delta/2} )
 	points.append( {'lat':lat-delta, 'lng':lng} )
+	points.append( {'lat':lat-delta/2, 'lng':lng} )
 	points.append( {'lat':lat-delta, 'lng':lng-delta} )
+	points.append( {'lat':lat-delta/2, 'lng':lng-delta/2} )
 
 	return points
 
@@ -80,7 +89,7 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 	# do we have an area to check or have we found enough venues?
 	while start_points and dbw.count_venues_in_database() < num_venues:
 		# take a new start point
-		start_point = start_points[0]
+		start_point = start_points[randint(0,len(start_points)-1)]
 
 		lat = start_point['lat']
 		lng = start_point['lng']
@@ -96,9 +105,7 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 			if not point in checked_points:
 				
 				# get the venues in the area
-				venues = []
-				while not venues:
-					venues = get_venues_near( point['lat'], point['lng'], api )
+				venues = get_venues_near( point['lat'], point['lng'], api )
 
 				# add the venues to the database
 				for venue in venues:
@@ -137,14 +144,16 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 		print 'start_points: %d' % len(start_points) 
 
 def get_venues_near( lat, lng, api ):
+	venues = []
 	# try and get some venues, and try and deal with any errors that occur.
-	try:
-		venues = api.find_venues_near( lat, lng )
-	except HTTPError as e:
-		print e
-		if e.code == 403:
-			time.sleep(60*60*15)
+	while not venues:
+		try:
+			venues = api.find_venues_near( lat, lng )
+		except HTTPError as e:
+			print e
+			if e.code == 403:
+				time.sleep(60*60*15)
 	return venues
 
 if __name__ == "__main__":
-	search_venues('51.475717','-3.179170','0.005000')	
+	search_venues('51.475717','-3.179170','0.050000' )	

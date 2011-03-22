@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011 Matthew J Williams
+# Copyright 2011 Matthew J Williams & Martin J Chorley
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ class APIGateway:
         `get_params` is the GET parameters; a dictionary.
         
         `path_suffix` is appended to the API's base path. The left-most
-        '/' is inserted if absent.
+        '/' is inserted if absent.s
         
         If query is successful the method returns JSON data encoded as
         python objects via `json.loads()`.
@@ -153,8 +153,7 @@ class APIGateway:
         
         #
         # Fin
-        return py_data
-        
+        return py_data 
 
 class FoursquareRequestError( RuntimeError ):
     def __init__( self, response_code, error_type, error_detail ):
@@ -280,21 +279,7 @@ class APIWrapper( object ):
                 nearby = group  # a three-field dict specifying a collection
         
         nearby = nearby['items']  # a list of nearby venues
-        
-        #
-        # Process the list of venues...
-        
-        """
-        ~
-        For Martin:
-        Do what you need to do! :)
-        Don't forget that venue results include a 'distance' value in the
-        venue's location dict. This specifies the venue's distance from the 
-        search target
-        ~
-        """
-        venues = nearby  # change as necessary. list of dicts for now.
-        
+        venues = nearby 
         return venues
 
 

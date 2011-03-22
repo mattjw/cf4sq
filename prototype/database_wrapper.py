@@ -1,20 +1,3 @@
-#!/usr/bin/env python
-#
-# Copyright 2011 Matthew J Williams & Martin J Chorley
-#
-#   Licensed under the Apache License, Version 2.0 (the "License");
-#   you may not use this file except in compliance with the License.
-#   You may obtain a copy of the License at
-#
-#       http://www.apache.org/licenses/LICENSE-2.0
-#
-#   Unless required by applicable law or agreed to in writing, software
-#   distributed under the License is distributed on an "AS IS" BASIS,
-#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#   See the License for the specific language governing permissions and
-#   limitations under the License.
-
-
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlite3 import dbapi2 as sqlite
@@ -22,7 +5,7 @@ from datetime import datetime as now
 
 from database import *
 
-DATABASE = 'sqlite:///cs4sq.db'
+DATABASE = 'sqlite:///4sq.db'
 MODULE=sqlite
 DEBUG=False
 
@@ -39,26 +22,49 @@ class DBWrapper( object ):
 	def __init__( self ):
 		Session = sessionmaker(bind=self._get_engine())
 		self.session = Session()
+		self.log = open( 'database.log', 'w' )
 
 	def get_session( self ):
 		return self.session
+
+	def get_venues_by_category( self, category ):
+		"""
+		Input	'category': Category object
+
+		Return all venues in the database with a give Category.
+
+		Output	list of all venues matching that category.
+		"""
+		venues = self.session.query(Venue).all()
+		v = []
+		for venue in venues:
+			if venue.category:
+				if venue.category.foursq_id == category.foursq_id:
+					v.append(venue)
+		return v
 
 	def add_category_to_database( self, cat ):
 		"""
 		Add a category to the database. Current schema does not relate categories to parents/children.
 		"""
-		c = self.get_category_from_database(cat)
+		c = self.get_category_from_database( cat )
 		if c == None:
-			c = Category(name=cat['name'], foursq_id=cat['id'])
-			self.session.add(c)
+			c = Category( name=cat['name'], foursq_id=cat['id'] )
+			self.session.add( c )
 			self.session.commit()
 		return c
+
+	def get_category_from_database_by_name( self, name ):
+		return self.session.query( Category ).filter( category.name == name ).all( )
 
 	def count_venues_in_database( self ):
 		"""
 		Count all the venues in the database
 		"""
-		return len(self.session.query(Venue).all())
+		return len( self.session.query( Venue ).all( ) )
+
+	def count_checkins_in_database( self ):
+		return len( self.session.query( Venue ).all( ) )
 
 	def get_category_from_database( self, category ):
 		"""
@@ -68,7 +74,7 @@ class DBWrapper( object ):
 
 		Output:		Category object
 		"""
-		return self.session.query(Category).filter(Category.foursq_id==category.get('id')).first()
+		return self.session.query( Category ).filter( Category.foursq_id==category.get( 'id' ) ).first()
 
 	def add_location_to_database( self, loc ):
 		"""
@@ -79,17 +85,17 @@ class DBWrapper( object ):
 		
 		Output: 	Location object
 		"""
-		l = self.session.query(Location).filter(Location.latitude==loc.get('lat')).filter(Location.longitude==loc.get('lng')).first()
+		l = self.session.query( Location ).filter( Location.latitude==loc.get( 'lat' ) ).filter( Location.longitude==loc.get( 'lng' ) ).first( )
 		if l == None:
-			print 'Location not found in database: %.5f, %.5f' % (loc.get('lat'), loc.get('lng'))
-			l = Location(latitude=loc.get('lat'), longitude=loc.get('lng'))
-			self.session.add(l)
-			self.session.commit()
+			self.log.write( 'Location not found in database: %.5f, %.5f' % ( loc.get( 'lat' ), loc.get( 'lng' ) ) )
+			l = Location( latitude=loc.get( 'lat' ), longitude=loc.get( 'lng' ) )
+			self.session.add( l )
+			self.session.commit( )
 		else:
-			print 'Location already in database: %.5f, %.5f' % (l.latitude, l.longitude)
+			self.log.write( 'Location already in database: %.5f, %.5f' % ( l.latitude, l.longitude ) )
 		return l
 
-	def add_checkin_to_database(self, checkin, venue):
+	def add_checkin_to_database( self, checkin, venue ):
 		"""
 		Input: 		'checkin': dict containing checkin information with 'id' and 'createdAt' keys and a dict with user information.
 		Input: 		'venue': Venue object from database (e.g. returned from get_venue_by_name())
@@ -100,26 +106,26 @@ class DBWrapper( object ):
 
 		Output: 	Checkin object
 		"""
-		c = self.get_checkin_from_database(checkin)
+		c = self.get_checkin_from_database( checkin )
 		if c == None:
-			print 'Checkin not found in database'
-			c = Checkin(foursq_id=checkin.get('id'), created_at=checkin.get('createdAt'))
-			user = checkin.get('user')
+			self.log.write( 'Checkin not found in database' )
+			c = Checkin( foursq_id=checkin.get( 'id' ), created_at=checkin.get( 'createdAt' ) )
+			user = checkin.get( 'user' )
 			
-			u = self.get_user_from_database(user)
+			u = self.get_user_from_database( user )
 			if u == None:
-				print 'User not found in database: %s %s' % (user.get('firstName'), user.get('lastName'))
-				u = self.add_user_to_database(user)
+				self.log.write( 'User not found in database: %s %s' %  ( user.get( 'firstName' ), user.get( 'lastName' ) ) )
+				u = self.add_user_to_database( user )
 			else:
-				print 'User found in database'
+				self.log.write( 'User found in database' )
 			c.user = u
 			c.user_id = u.id
 			c.venue = venue
 			c.checkin_id = venue.id
 		else:
-			print 'Checkin found in database'
-		self.session.add(c)
-		self.session.commit()
+			self.log.write( 'Checkin found in database' )
+		self.session.add( c )
+		self.session.commit( )
 
 
 	def add_venue_to_database( self, venue ):
@@ -132,29 +138,29 @@ class DBWrapper( object ):
 
 		Output		Venue object
 		"""
-		v = self.get_venue_from_database(venue)
+		v = self.get_venue_from_database( venue )
 		if v == None:
-			print 'Venue not in database: %s' % (venue.get('name'))
+			self.log.write( 'Venue not in database: %s' % ( venue.get( 'name' ) ) )
 
 			loc = venue['location']
-			l = self.add_location_to_database(loc)
+			l = self.add_location_to_database( loc )
 			
-			v = Venue(foursq_id=venue['id'], name=venue['name'], verified=venue['verified'], location_id=l.id)
+			v = Venue( foursq_id=venue['id'], name=venue['name'], verified=venue['verified'], location_id=l.id )
 			
 			categories = venue['categories']
 			for category in categories:
 				if category.get('primary'):
-					c = self.add_category_to_database(category)
+					c = self.add_category_to_database( category )
 					v.category_id = c.id
 					v.category = c
-			self.session.add(v)
-			self.session.commit()
+			self.session.add( v )
+			self.session.commit( )
 
 			stat = venue['stats']
-			self.add_statistics_to_database(v, stat)
-			self.session.commit()
+			self.add_statistics_to_database( v, stat )
+			self.session.commit( )
 		else:
-			print 'Venue already in database: %s' % (v.name)
+			self.log.write( 'Venue already in database: %s' % (v.name) )
 		return v
 
 	def update_mayor( self, venue, mayor ):
@@ -166,15 +172,15 @@ class DBWrapper( object ):
 
 		Output  None
 		"""
-		v = self.get_venue_from_database(venue)
+		v = self.get_venue_from_database( venue )
 		if v == None:
-			self.add_venue_to_database(venue)
+			self.add_venue_to_database( venue )
 		else:
-			u = self.add_user_to_database(mayor)
+			u = self.add_user_to_database( mayor )
 			v.mayor_id = u.id
 			v.mayor = u
-			self.session.add(v)
-			self.session.commit()
+			self.session.add( v )
+			self.session.commit( )
 
 	def get_venue_from_database( self, venue ):
 		"""
@@ -184,7 +190,7 @@ class DBWrapper( object ):
 		
 		Output	Venue object. Will be 'None' if venue does not exist in the database. 
 		"""
-		return self.session.query(Venue).filter(Venue.foursq_id==venue['id']).first()
+		return self.session.query( Venue ).filter( Venue.foursq_id==venue['id'] ).first( )
 
 	def get_user_from_database( self, user):
 		"""
@@ -194,7 +200,7 @@ class DBWrapper( object ):
 		
 		Output	User object. Will be 'None' if user does not exist in the database. 
 		"""
-		return self.session.query(User).filter(User.foursq_id==user.get('id')).first()
+		return self.session.query( User ).filter( User.foursq_id==user.get( 'id' ) ).first( )
 	
 	def get_checkin_from_database( self, checkin ):
 		"""
@@ -204,7 +210,7 @@ class DBWrapper( object ):
 		
 		Output	Checkin object. Will be 'None' if checkin does not exist in the database. 
 		"""
-		return self.session.query(Checkin).filter(Checkin.foursq_id==checkin.get('id')).first()
+		return self.session.query( Checkin ).filter( Checkin.foursq_id==checkin.get('id') ).first( )
 
 	def get_venue_by_name( self, name ):
 		"""
@@ -214,7 +220,7 @@ class DBWrapper( object ):
 		
 		Output	Venue object. Will be 'None' if venue does not exist in the database. 
 		"""
-		return self.session.query(Venue).filter(Venue.name==name).first()
+		return self.session.query( Venue ).filter( Venue.name==name ).first( )
 
 	def add_user_to_database( self, user):
 		"""
@@ -224,20 +230,20 @@ class DBWrapper( object ):
 
 		Output	User object
 		"""
-		u = self.get_user_from_database(user)
+		u = self.get_user_from_database( user )
 		if u == None:
-			print 'User not found in database: %s %s' % (user.get('firstName'), user.get('lastName'))
-			u = User(foursq_id=user.get('id'), first_name=user.get('firstName'), last_name=user.get('lastName'), gender=user.get('gender'), home_city=user.get('homeCity'))
-			self.session.add(u)
-			self.session.commit()
+			self.log.write( 'User not found in database: %s %s' % ( user.get( 'firstName' ), user.get( 'lastName' ) ) )
+			u = User( foursq_id=user.get( 'id' ), first_name=user.get( 'firstName' ), last_name=user.get( 'lastName' ), gender=user.get( 'gender' ), home_city=user.get( 'homeCity' ) )
+			self.session.add( u )
+			self.session.commit( )
 		else:
-			print 'User found in database: %s %s' % (u.first_name, u.last_name)
+			self.log.write( 'User found in database: %s %s' % ( u.first_name, u.last_name ) )
 		return u
 	
 	def add_search_to_database( self, date, latitude, longitude ):
 		s = Search( latitude=latitude, longitude=longitude, date=date )
-		self.session.add(s)
-		self.session.commit()
+		self.session.add( s )
+		self.session.commit( )
 		return s
 
 	def add_statistics_to_database( self, venue, stats ):
@@ -249,9 +255,9 @@ class DBWrapper( object ):
 
 		Output	Statistics object
 		"""
-		s = Statistic(venue.id, now.now(), stats['checkinsCount'], stats['usersCount'])
-		self.session.add(s)
-		self.session.commit()
+		s = Statistic( venue.id, now.now( ), stats['checkinsCount'], stats['usersCount'] )
+		self.session.add( s )
+		self.session.commit( )
 		return s
 
 	def get_all_venues( self ):
@@ -260,10 +266,10 @@ class DBWrapper( object ):
 
 		Output	list of Venue objects
 		"""
-		return self.session.query(Venue).all()
+		return self.session.query( Venue ).all( )
 
 	def _get_engine( self ):
-		return create_engine(DATABASE, module=MODULE, echo=DEBUG)
+		return create_engine( DATABASE, module=MODULE, echo=DEBUG )
 
 	def __create_tables__( self ):
 		"""
