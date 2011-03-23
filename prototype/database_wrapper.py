@@ -2,10 +2,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlite3 import dbapi2 as sqlite
 from datetime import datetime as now
-
 from database import *
+import _credentials
 
-DATABASE = 'sqlite:///4sq.db'
+DATABASE = _credentials.database
 MODULE=sqlite
 DEBUG=False
 
@@ -87,12 +87,12 @@ class DBWrapper( object ):
 		"""
 		l = self.session.query( Location ).filter( Location.latitude==loc.get( 'lat' ) ).filter( Location.longitude==loc.get( 'lng' ) ).first( )
 		if l == None:
-			self.log.write( 'Location not found in database: %.5f, %.5f' % ( loc.get( 'lat' ), loc.get( 'lng' ) ) )
+			self.log.write( 'Location not found in database: %.5f, %.5f\n' % ( loc.get( 'lat' ), loc.get( 'lng' ) ) )
 			l = Location( latitude=loc.get( 'lat' ), longitude=loc.get( 'lng' ) )
 			self.session.add( l )
 			self.session.commit( )
 		else:
-			self.log.write( 'Location already in database: %.5f, %.5f' % ( l.latitude, l.longitude ) )
+			self.log.write( 'Location already in database: %.5f, %.5f\n' % ( l.latitude, l.longitude ) )
 		return l
 
 	def add_checkin_to_database( self, checkin, venue ):
@@ -108,22 +108,19 @@ class DBWrapper( object ):
 		"""
 		c = self.get_checkin_from_database( checkin )
 		if c == None:
-			self.log.write( 'Checkin not found in database' )
+			self.log.write( 'Checkin not found in database\n' )
 			c = Checkin( foursq_id=checkin.get( 'id' ), created_at=checkin.get( 'createdAt' ) )
 			user = checkin.get( 'user' )
 			
 			u = self.get_user_from_database( user )
 			if u == None:
-				self.log.write( 'User not found in database: %s %s' %  ( user.get( 'firstName' ), user.get( 'lastName' ) ) )
 				u = self.add_user_to_database( user )
-			else:
-				self.log.write( 'User found in database' )
 			c.user = u
 			c.user_id = u.id
 			c.venue = venue
 			c.checkin_id = venue.id
 		else:
-			self.log.write( 'Checkin found in database' )
+			self.log.write( 'Checkin found in database\n' )
 		self.session.add( c )
 		self.session.commit( )
 
@@ -140,7 +137,7 @@ class DBWrapper( object ):
 		"""
 		v = self.get_venue_from_database( venue )
 		if v == None:
-			self.log.write( 'Venue not in database: %s' % ( venue.get( 'name' ) ) )
+			self.log.write( 'Venue not in database: %s\n' % ( venue.get( 'name' ).encode( 'utf-8' ) ) )
 
 			loc = venue['location']
 			l = self.add_location_to_database( loc )
@@ -160,7 +157,7 @@ class DBWrapper( object ):
 			self.add_statistics_to_database( v, stat )
 			self.session.commit( )
 		else:
-			self.log.write( 'Venue already in database: %s' % (v.name) )
+			self.log.write( 'Venue already in database: %s\n' % (v.name).encode( 'utf-8' ) )
 		return v
 
 	def update_mayor( self, venue, mayor ):
@@ -232,12 +229,12 @@ class DBWrapper( object ):
 		"""
 		u = self.get_user_from_database( user )
 		if u == None:
-			self.log.write( 'User not found in database: %s %s' % ( user.get( 'firstName' ), user.get( 'lastName' ) ) )
+			self.log.write( 'User not found in database: %s %s\n' % ( user.get( 'firstName' ).encode('utf-8'), user.get( 'lastName' ).encode('utf-8') ) )
 			u = User( foursq_id=user.get( 'id' ), first_name=user.get( 'firstName' ), last_name=user.get( 'lastName' ), gender=user.get( 'gender' ), home_city=user.get( 'homeCity' ) )
 			self.session.add( u )
 			self.session.commit( )
 		else:
-			self.log.write( 'User found in database: %s %s' % ( u.first_name, u.last_name ) )
+			self.log.write( 'User found in database: %s %s\n' % ( u.first_name.encode('utf-8'), u.last_name.encode('utf-8') ) )
 		return u
 	
 	def add_search_to_database( self, date, latitude, longitude ):

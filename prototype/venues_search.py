@@ -62,21 +62,13 @@ def get_points_surrounding( point, delta ):
 	lng = point['lng']
 
 	points.append( {'lat':lat, 'lng':lng+delta} )
-	points.append( {'lat':lat, 'lng':lng+delta/2})
 	points.append( {'lat':lat+delta, 'lng':lng+delta} )
-	points.append( {'lat':lat+delta/2, 'lng':lng+delta/2} )
 	points.append( {'lat':lat+delta, 'lng':lng} )
-	points.append( {'lat':lat+delta/2, 'lng':lng} )
 	points.append( {'lat':lat+delta, 'lng':lng-delta} )
-	points.append( {'lat':lat+delta/2, 'lng':lng-delta/2} )
 	points.append( {'lat':lat, 'lng':lng-delta} )
-	points.append( {'lat':lat, 'lng':lng-delta/2} )
 	points.append( {'lat':lat-delta, 'lng':lng-delta} )
-	points.append( {'lat':lat-delta/2, 'lng':lng-delta/2} )
 	points.append( {'lat':lat-delta, 'lng':lng} )
-	points.append( {'lat':lat-delta/2, 'lng':lng} )
 	points.append( {'lat':lat-delta, 'lng':lng-delta} )
-	points.append( {'lat':lat-delta/2, 'lng':lng-delta/2} )
 
 	return points
 
@@ -85,6 +77,8 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 	"""
 	Find foursquare venues and add them to the database. 
 	"""
+	f = open('venue_search.log', 'w')
+
 	delta = initial_delta
 	# do we have an area to check or have we found enough venues?
 	while start_points and dbw.count_venues_in_database() < num_venues:
@@ -93,7 +87,9 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 
 		lat = start_point['lat']
 		lng = start_point['lng']
-		
+
+		f.write( 'start point: %.6f,%.6f\n' % ( float(lat), float(lng) ) )
+		f.flush()
 		# how many venues do we have already?
 		num_venues_pre = dbw.count_venues_in_database()
 		
@@ -121,27 +117,29 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 
 		# no new venues, so move to a new start point
 		if num_venues_pre == num_venues_post:
-			print 'no new venues, moving to new start point'
+			f.write( 'no new venues, moving to new start point\n' )
+			f.flush()
 			# don't check this point again!
 			point = start_points.pop(0)
 			# reset delta
 			delta = initial_delta
-			print 'point removed: %.7f %.7f' % ( float( point['lat'] ), float( point['lng'] ) )
+			f.write( 'point removed: %.7f %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
 			# get some new start points away from this point
 			points = get_points_surrounding( point, delta )
 			for point in points:
 				if not point in start_points and not point in checked_points:
 					start_points.append( point )
-					print 'new start point: %.7f, %.7f' % ( float( point['lat'] ), float( point['lng'] ) )
+					f.write( 'new start point: %.7f, %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
 		# found new venues, so search this area more
 		else:
-			print 'new venues, keeping start point and decreasing radius'
+			f.write( 'new venues, keeping start point and decreasing radius' )
 			delta = delta / 2
 
 		# let us know how we're doing
-		print 'delta: %.6f' % ( delta )
-		print 'venues: %d' % (dbw.count_venues_in_database())
-		print 'start_points: %d' % len(start_points) 
+		f.write( 'delta: %.6f\n' % ( delta ) )
+		f.write( 'venues: %d\n' % (dbw.count_venues_in_database()) )
+		f.write( 'start_points: %d\n' % len(start_points) )
+		f.flush()
 
 def get_venues_near( lat, lng, api ):
 	venues = []

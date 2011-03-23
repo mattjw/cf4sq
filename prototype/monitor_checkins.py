@@ -19,6 +19,14 @@ from venues_api import VenueAPIGateway
 from urllib2 import HTTPError
 from api import *
 from exceptions import Exception
+from shapely.geometry import Point, Polygon
+import math
+
+"""
+Now uses the Shapely package for doing testing of whether a point is within a given search location. Shapely can be obtained
+by the usual python methods (easy_install etc) but does rely on the GEOS framework. OS X users can obtain a port of GEOS here:
+http://www.kyngchaos.com/software:frameworks
+"""
 
 def get_venue_details( id ):
 	response = []
@@ -30,6 +38,10 @@ def get_venue_details( id ):
 			print e
 			pass
 	return response
+
+def point_inside_polygon(point,poly):
+	return poly.contains(point)
+
 
 if __name__ == "__main__":
 	
@@ -51,7 +63,7 @@ if __name__ == "__main__":
 
 	api = APIWrapper( gateway )
 	venue_api = APIWrapper( venue_gateway )
-
+	cardiff_polygon = Polygon([(51.4846,-3.2314),(51.4970,-3.2162),(51.5043,-3.1970),(51.5010,-3.1575),(51.4831,-3.1411),(51.4660,-3.1356),(51.4514,-3.1562),(51.4260,-3.1692),(51.4320,-3.1878)])
 	while True:
 		count_venues = 0
 		count_checkins = 0
@@ -65,7 +77,8 @@ if __name__ == "__main__":
 				location = venue.location
 				lat = location.latitude
 				lng = location.longitude
-				if lat > 51.4412 and lat < 51.5085 and lng > -3.2138 and lng < -3.1294:
+				point = Point(lat,lng)
+				if point_inside_polygon(point, cardiff_polygon):
 					f.write( 'Retrieve details for venue: %s\n' % ( venue.name.encode('utf-8') ) )
 					f.flush()
 					response = get_venue_details( venue.foursq_id )
@@ -92,7 +105,7 @@ if __name__ == "__main__":
 		f.write( 'venues checked: %d\n' % ( count_venues ) )
 		f.write( 'venues with checkins: %d\n' % ( count_venues_with_checkins ) )
 		f.write( 'checkins: %d\n' % ( count_checkins ) )
-		f.write( 'total checkins in database: %d' dbw.get_number_of_checkins() )
+		f.write( 'total checkins in database: %d' dbw.count_checkins_in_database() )
 		f.flush()
 
 	
