@@ -105,7 +105,7 @@ if __name__ == "__main__":
 		f.write( 'venues checked: %d\n' % ( count_venues ) )
 		f.write( 'venues with checkins: %d\n' % ( count_venues_with_checkins ) )
 		f.write( 'checkins: %d\n' % ( count_checkins ) )
-		f.write( 'total checkins in database: %d' dbw.count_checkins_in_database() )
+		f.write( 'total checkins in database: %d\n' % dbw.count_checkins_in_database() )
 		f.flush()
 
 	
