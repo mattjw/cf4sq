@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
 	api = APIWrapper( gateway )
 	venue_api = APIWrapper( venue_gateway )
-	cardiff_polygon = Polygon([(51.4846,-3.2314),(51.4970,-3.2162),(51.5043,-3.1970),(51.5010,-3.1575),(51.4831,-3.1411),(51.4660,-3.1356),(51.4514,-3.1562),(51.4260,-3.1692),(51.4320,-3.1878)])
+	cardiff_polygon = Polygon(_credentials.polygon)
 	while True:
 		count_venues = 0
 		count_checkins = 0
