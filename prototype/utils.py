@@ -2,6 +2,7 @@ from database_wrapper import DBWrapper
 from venues_api import *
 from api import *
 from shapely.geometry import Point, Polygon
+import datetime
 
 def print_locations():
 	dbw = DBWrapper()
@@ -15,9 +16,53 @@ def print_locations():
 			users = max(users, statistic.users)
 		print '%s;%.6f;%.6f;%s' % (venue.name,location.latitude,location.longitude,users)
 
+def print_checkin_stats():
+
+	dbw = DBWrapper()
+	checkins = dbw.get_all_checkins()
+
+	delay = 60*2
+	next_check_time = time.time()
+	while True:
+		while time.time() < next_check_time:
+			sleep_dur = next_check_time - time.time()
+			time.sleep( sleep_dur )
+
+		print 'unique checkins captured: %d' % len(checkins)
+		diff = datetime.timedelta(hours=1)
+		checked = []
+		count = 0
+		for checkin1 in checkins:
+			for checkin2 in checkins:
+				if not checkin2 in checked or checkin1 in checked:
+					if checkin1.venue_id == checkin2.venue_id:
+						if not checkin1.user_id == checkin2.user_id:
+							time1 = datetime.datetime.fromtimestamp(checkin1.created_at)
+							time2 = datetime.datetime.fromtimestamp(checkin2.created_at)
+							if time1 - time2 < diff:
+								count = count + 1
+		print 'matching checkins: %d' % count
+		next_check_time = time.time() + delay
+
+
 def point_inside_polygon(point,poly):
 	return poly.contains(point)
 
+def count_venues_in_polygon():
+	dbw = DBWrapper()
+	venues = dbw.get_all_venues()
+
+	polygon=Polygon([(52.2413,0.0172),(52.2728,0.0707),(52.2892,0.1154),(52.2829,0.1923),(52.2345,0.3268),(52.1819,0.3385),(52.1461,0.3008),(52.0972,0.2465),(52.0588,0.2204),(52.0546,0.1751),(52.1082,0.0179),(52.1920,0.0151)])
+
+	count = 0
+	for venue in venues:
+		location = venue.location
+		point = Point(location.latitude, location.longitude)
+		if point_inside_polygon(point,polygon):
+			count = count + 1
+		
+	print count
+				
 def print_kml():
 
 	f=open('locations.kml', 'w')
@@ -62,4 +107,4 @@ def print_kml():
 	print count
 
 if __name__ == "__main__":
-	print_kml()
+	count_venues_in_polygon()

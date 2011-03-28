@@ -265,6 +265,14 @@ class DBWrapper( object ):
 		"""
 		return self.session.query( Venue ).all( )
 
+	def get_all_checkins( self ):
+		"""
+		Retrieves all checkins from the database.
+
+		Output	list of Checkin objects
+		"""
+		return self.session.query( Checkin ).all( )
+
 	def _get_engine( self ):
 		return create_engine( DATABASE, module=MODULE, echo=DEBUG )
 
