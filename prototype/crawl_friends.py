@@ -47,11 +47,11 @@ if __name__ == "__main__":
     api = APIWrapper( gateway )
     dbw = DBWrapper()
     
-    if True:
+    if False:
+        #~ For debugging
         from database import Friendship
         dbw._get_engine().drop(Friendship.__table__)
         dbw._get_engine().create(Friendship.__table__)
-        # For debugging~
     
     #
     # Begin mining...
@@ -69,7 +69,6 @@ if __name__ == "__main__":
     friend_rows_added = 0
     
     all_users = dbw.get_all_users_with_checkins() 
-    all_users = all_users[0:20] #~
     for indx, user_obj in enumerate( all_users ):
         user_4sq_id = user_obj.foursq_id
         friends = api.get_friends_of( user_4sq_id )
