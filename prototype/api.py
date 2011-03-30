@@ -281,7 +281,29 @@ class APIWrapper( object ):
         nearby = nearby['items']  # a list of nearby venues
         venues = nearby 
         return venues
-
+    
+    def get_friends_of( self, user_id ):
+        """
+        Get the friends of a particular user.
+        
+        N.B. API only returns up to 500 friends. For now, this should be fine.
+        
+        Returns a list of users. Each user is a dictionary containing
+        a terse subset of user attributes.
+        """
+        data = self.query_resource( 'users', user_id, 'friends' )
+        
+        response = data['response']  # a dict
+        friends_dict = response['friends']  # a dict
+        friends = friends_dict['items'] # a list of (compact) user dicts
+        
+        return friends 
+    
+    def get_user_by_id( self, user_id ):
+        data = self.query_resource( 'users', user_id )
+        response = data['response']  # a dict
+        user = response['user'] # a dict
+        return user
 
 if __name__ == "__main__":
     import _credentials
@@ -294,6 +316,13 @@ if __name__ == "__main__":
     data = reply['response']
     print data
     print 
+    
+    print "Grab a list of friends of a given user..."
+    friends = api.get_friends_of( 5082497 )
+    for f in friends:
+        print "\t", f
+    print
+    exit()
     
     print "Search for venues near a given location..."
     venues = api.find_venues_near( 51.4777, -3.1844 )

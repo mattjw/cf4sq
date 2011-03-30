@@ -5,3 +5,4 @@
 *_clear_database.py
 *_tests.py
 *.db
+*.log

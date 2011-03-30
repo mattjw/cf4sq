@@ -169,3 +169,55 @@ class Lookup( Base ):
 
     def __repr__( self ):
         return "<Lookup('%s, '%s', '%d', '%d',')>" % ( self.date, self.venue, self.expected_checkins, self.actual_checkins)
+
+class Friendship( Base ):
+    """
+    Although 4sq friendships are symmetric, we choose to store both 
+    directions of the friendship as separate rows. Thus, the table will 
+    have two row pers 4sq friendship. This simplifies querying.
+    
+    Friendship creation dates are not included in the 4sq API.
+    
+    A discovered friendship is stored along with the date of the run in which
+    the friendship was found. 
+    
+    The date `date_crawled` specifies when the friendship was discovered. 
+    
+    The `crawl_id` is an optional value to be used where the friendships
+    are being crawled in a one-off run. The same id is used for all friendships
+    collected in the same run. This allows a the snapshot captured by a 
+    particular run to be resconstructed easily.
+    `crawl_id` is an integer. A new run identifier can be generated
+    by choosing max(crawl_id)+1.
+    """
+    
+    __tablename__ = 'friendships'
+    
+    id = Column( Integer, primary_key=True )
+    
+    userA_id = Column( Integer, ForeignKey( 'users.id') )
+    #userA = relationship("User", backref=backref('friendships'), cascade="all, save-update")
+    
+    userB_id = Column( Integer, ForeignKey( 'users.id') )
+    #userB = relationship("User", backref=backref('friendships'), cascade="all, save-update")
+    
+    date_crawled = Column( DateTime )
+    crawl_id = Column( Integer, nullable=True )
+    
+    def __init__( self, userA, userB, date_crawled, crawl_id=None ):
+        """
+        `userA`,`userB`: expected to be User objects.
+        """
+        #self.userA = userA        
+        self.userA_id = userA.id
+
+        #self.userB = userB
+        self.userB_id = userB.id
+        
+        self.date_crawled = date_crawled
+        self.crawl_id = crawl_id
+
+    def __repr__( self ):
+        return "<Friendship('%d, '%d', '%s','%s')>" % ( self.userA_id, self.userB_id, self.date_crawled, self.crawl_id )
+        
+    
