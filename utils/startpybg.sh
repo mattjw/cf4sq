@@ -15,6 +15,5 @@
 fout="$1.pybg"
 echo -e "started: "`date` > $fout
 python $* >> $fout 2>&1 &
-
 echo -e "pid:     " $!"\n" >> $fout 
 
