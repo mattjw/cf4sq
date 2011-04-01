@@ -136,11 +136,11 @@ class DBWrapper( object ):
                 are returned.
         
         Retrieves the specified friendship from the database. There may be
-        multiple matches.
+        multiple matches because the same friendship maybe have been mined
+        and stored on multiple occasions.
         
-        Output  List of friendship objects. If none found, len = 0.
+        Output  List of friendship objects. If none found, list length is 0.
         """
-        #~ need to test this
         userA_id = userA.id
         userB_id = userB.id
         if crawl_id is not None:

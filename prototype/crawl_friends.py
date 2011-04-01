@@ -32,7 +32,7 @@ from api import *
 if __name__ == "__main__":
     
     #
-    # Log
+    # Logging
     import logging
     logging.basicConfig( filename="crawl_friends.log", level=logging.DEBUG, 
         datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
@@ -47,11 +47,10 @@ if __name__ == "__main__":
     api = APIWrapper( gateway )
     dbw = DBWrapper()
     
-    if False:
-        #~ For debugging
+    if True: #~
         from database import Friendship
-        dbw._get_engine().drop(Friendship.__table__)
-        dbw._get_engine().create(Friendship.__table__)
+        if not dbw._get_engine().has_table('friendships'):
+            dbw._get_engine().create(Friendship.__table__)
     
     #
     # Begin mining...
@@ -83,7 +82,8 @@ if __name__ == "__main__":
             # Check that the friend user is a 'user' and not a brand (etc.)
             friend_api_dict = api.get_user_by_id( friend_4sq_id )
             if friend_api_dict['type'].lower() != 'user':
-                logging.info( "friend user %s was not of type 'user'. skipping.", friend_4sq_id )
+                logging.info( "friend (4sq id =  %s) was not of type 'user'. skipping.", friend_4sq_id )
+                continue 
             
             # Add the friend user if necessary
             friend_obj = dbw.get_user_from_database( friend_dict )
@@ -92,7 +92,7 @@ if __name__ == "__main__":
                 logging.debug( 'added new user to database: %s', str(friend_obj) )
             
             # Add friendship in each direction (iff not already added in this run)
-            friendship = dbw.get_friendship_from_database( user_obj, friend_obj, crawl_id )
+            friendship = dbw.get_friendship_from_database( user_obj, friend_obj, crawl_id ) 
             if len(friendship) == 0:
                 fship_obj = dbw.add_friendship_to_database( user_obj, friend_obj, crawl_id )
                 logging.debug( 'added new row to friendships: %s', str(fship_obj) )
@@ -107,15 +107,9 @@ if __name__ == "__main__":
     logging.info( 'finishing run' )
     logging.info( 'crawl id: %s', crawl_id )
     logging.info( 'users checked: %s', count_users )
-    logging.info( 'sum of node degrees: %s', sum_degree )
+    logging.info( 'sum of node degrees (inc. brands): %s', sum_degree )
     logging.info( 'friendhip rows added: %s', friend_rows_added )
     logging.info( 'run finished' )
     
-    f.write( 'venues checked: %d\n' % ( count_venues ) )
-    f.write( 'venues with checkins: %d\n' % ( count_venues_with_checkins ) )
-    f.write( 'checkins: %d\n' % ( count_checkins ) )
-    f.write( 'total checkins in database: %d\n' % dbw.count_checkins_in_database() )
-    f.flush()
-
     
 
