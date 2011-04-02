@@ -321,6 +321,10 @@ if __name__ == "__main__":
     gateway = APIGateway( tokens )
     api = APIWrapper( gateway )
     
+    print "Grab friends from a non-existent user..."
+    friends = api.get_friends_of( 23432190333 )
+    print len( friends )
+    
     print "Grab all the friends of a very popular user..."
     friends = api.get_friends_of( 1235468 )
     print len( friends )

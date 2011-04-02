@@ -70,17 +70,34 @@ if __name__ == "__main__":
     all_users = dbw.get_all_users_with_checkins() 
     for indx, user_obj in enumerate( all_users ):
         user_4sq_id = user_obj.foursq_id
-        friends = api.get_friends_of( user_4sq_id )
         
-        logging.info( 'crawling user %s (%s of %s). found %s friends.', user_4sq_id, indx+1, len(all_users), len(friends) )
+        logging.info( 'crawling user %s (%s of %s).', user_4sq_id, indx+1, len(all_users) )
+        try:
+            friends = api.get_friends_of( user_4sq_id )
+        except HTTPError:
+            # Handle the case where a user is not found in the API
+            logging.info( "\t HTTPError for user %s. skipping.", user_4sq_id )
+            continue
+            
+        logging.info( '\tfound %s friends.', len(friends) )
+        
         count_users += 1
         sum_degree += len( friends )
         
         for friend_dict in friends:
             friend_4sq_id = friend_dict['id']
             
+            # Get full friend user info from API
+            try:
+                friend_api_dict = api.get_user_by_id( friend_4sq_id )
+            except HTTPError:
+                # Handle the case where a user no longer exists in the API
+                #     (This probably will never occur -- 4sq presumably erase
+                #     all friend connections with removed users.)
+                logging.info( "HTTPError for friend %s. skipping.", friend_4sq_id )
+                continue
+            
             # Check that the friend user is a 'user' and not a brand (etc.)
-            friend_api_dict = api.get_user_by_id( friend_4sq_id )
             if friend_api_dict['type'].lower() != 'user':
                 logging.info( "friend (4sq id =  %s) was not of type 'user'. skipping.", friend_4sq_id )
                 continue 
