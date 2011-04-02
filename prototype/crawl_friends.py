@@ -25,10 +25,28 @@ are added to the users table.
 
 
 from database_wrapper import DBWrapper
-from urllib2 import HTTPError
+from urllib2 import HTTPError, URLError
 from api import *
 
 
+def call_wrapper( l_func ):
+    """
+    Will retry the an erroneous API call until it is successful. 
+    If an HTTPError is encountered, it is reraised.
+    If an URLError is encountered, the function will wait 10 minutes and
+    then try the call again. This is repeated until the call is successful.
+    """
+    while True:
+        try:
+            ret = l_func()
+            return ret
+        except HTTPError, e:
+            raise e
+        except URLError, e:
+            logging.info("encountered URLError. retrying in 10 minutes.")
+            time.sleep( 10 * 60 )
+    
+    
 if __name__ == "__main__":
     
     #
@@ -73,7 +91,7 @@ if __name__ == "__main__":
         
         logging.info( 'crawling user %s (%s of %s).', user_4sq_id, indx+1, len(all_users) )
         try:
-            friends = api.get_friends_of( user_4sq_id )
+            friends = call_wrapper( lambda: api.get_friends_of( user_4sq_id ) )
         except HTTPError:
             # Handle the case where a user is not found in the API
             logging.info( "\t HTTPError for user %s. skipping.", user_4sq_id )
@@ -89,7 +107,7 @@ if __name__ == "__main__":
             
             # Get full friend user info from API
             try:
-                friend_api_dict = api.get_user_by_id( friend_4sq_id )
+                friend_api_dict = call_wrapper( lambda: api.get_user_by_id( friend_4sq_id ) )
             except HTTPError:
                 # Handle the case where a user no longer exists in the API
                 #     (This probably will never occur -- 4sq presumably erase
