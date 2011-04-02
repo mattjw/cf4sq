@@ -286,18 +286,28 @@ class APIWrapper( object ):
         """
         Get the friends of a particular user.
         
-        N.B. API only returns up to 500 friends. For now, this should be fine.
+        This is coded to return *all* of the friends of the user. This may
+        require multiple access requests.
         
         Returns a list of users. Each user is a dictionary containing
         a terse subset of user attributes.
         """
-        data = self.query_resource( 'users', user_id, 'friends' )
+        offset = 0
+        limit = 500
         
-        response = data['response']  # a dict
-        friends_dict = response['friends']  # a dict
-        friends = friends_dict['items'] # a list of (compact) user dicts
-        
-        return friends 
+        data = self.query_resource( 'users', user_id, 'friends', 
+                   {'limit':limit, 'offset':offset} )
+        target_num_friends = long( data['response']['friends']['count'] )
+
+        friends_list = data['response']['friends']['items']
+        while len(friends_list) < target_num_friends:
+            offset += limit
+            data = self.query_resource( 'users', user_id, 'friends', 
+                       {'limit':limit, 'offset':offset} )
+            friends_list += data['response']['friends']['items']
+            
+        assert len( friends_list ) == target_num_friends
+        return friends_list
     
     def get_user_by_id( self, user_id ):
         data = self.query_resource( 'users', user_id )
@@ -311,6 +321,17 @@ if __name__ == "__main__":
     gateway = APIGateway( tokens )
     api = APIWrapper( gateway )
     
+    print "Grab all the friends of a very popular user..."
+    friends = api.get_friends_of( 1235468 )
+    print len( friends )
+    print len( frozenset( [ elm['id'] for elm in friends] ) )
+    
+    print "Grab all the friends of a less popular user..."
+    friends = api.get_friends_of( 5082497 )
+    print len( friends )
+    print len( frozenset( [ elm['id'] for elm in friends] ) )
+    exit()
+    
     print "Grab info about a given venue..."
     reply = api.query_resource( "venues", "591313" )
     data = reply['response']
@@ -322,7 +343,6 @@ if __name__ == "__main__":
     for f in friends:
         print "\t", f
     print
-    exit()
     
     print "Search for venues near a given location..."
     venues = api.find_venues_near( 51.4777, -3.1844 )

@@ -89,19 +89,19 @@ if __name__ == "__main__":
             friend_obj = dbw.get_user_from_database( friend_dict )
             if friend_obj is None:
                 friend_obj = dbw.add_user_to_database( friend_dict )
-                logging.debug( 'added new user to database: %s', str(friend_obj) )
+                logging.debug( 'added new user to database: %s', friend_obj )
             
             # Add friendship in each direction (iff not already added in this run)
             friendship = dbw.get_friendship_from_database( user_obj, friend_obj, crawl_id ) 
             if len(friendship) == 0:
                 fship_obj = dbw.add_friendship_to_database( user_obj, friend_obj, crawl_id )
-                logging.debug( 'added new row to friendships: %s', str(fship_obj) )
+                logging.debug( 'added new row to friendships: %s', fship_obj )
                 friend_rows_added += 1
                 
             friendship = dbw.get_friendship_from_database( friend_obj, user_obj, crawl_id )
             if len(friendship) == 0:
                 fship_obj = dbw.add_friendship_to_database( friend_obj, user_obj, crawl_id )
-                logging.debug( 'added new row to friendships: %s', str(fship_obj) )
+                logging.debug( 'added new row to friendships: %s', fship_obj )
                 friend_rows_added += 1
         
     logging.info( 'finishing run' )
