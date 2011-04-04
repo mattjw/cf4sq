@@ -23,6 +23,7 @@ from urllib2 import HTTPError
 from random import randint
 import datetime
 import time
+import logging
 
 def search_venues( lat, lng, delta, num_venues=5000 ):
 	"""
@@ -77,7 +78,9 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 	"""
 	Find foursquare venues and add them to the database. 
 	"""
-	f = open('venue_search.log', 'w')
+	logging.basicConfig( filename="4sq.log", level=logging.DEBUG, 
+		datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
+	logging.info( 'venue search initiated' )
 
 	delta = initial_delta
 	# do we have an area to check or have we found enough venues?
@@ -88,8 +91,7 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 		lat = start_point['lat']
 		lng = start_point['lng']
 
-		f.write( 'start point: %.6f,%.6f\n' % ( float(lat), float(lng) ) )
-		f.flush()
+		logging.info( 'start point: %.6f,%.6f\n' % ( float(lat), float(lng) ) )
 		# how many venues do we have already?
 		num_venues_pre = dbw.count_venues_in_database()
 		
@@ -117,41 +119,39 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 
 		# no new venues, so move to a new start point
 		if num_venues_pre == num_venues_post:
-			f.write( 'no new venues, moving to new start point\n' )
-			f.flush()
+			logging.info( 'no new venues, moving to new start point\n' )
 			# don't check this point again!
 			point = start_points.pop(0)
 			# reset delta
 			delta = initial_delta
-			f.write( 'point removed: %.7f %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
+			logging.info( 'point removed: %.7f %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
 			# get some new start points away from this point
 			points = get_points_surrounding( point, delta )
 			for point in points:
 				if not point in start_points and not point in checked_points:
 					start_points.append( point )
-					f.write( 'new start point: %.7f, %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
+					logging.info( 'new start point: %.7f, %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
 		# found new venues, so search this area more
 		else:
-			f.write( 'new venues, keeping start point and decreasing radius' )
+			logging.info( 'new venues, keeping start point and decreasing radius' )
 			delta = delta / 2
 
 		# let us know how we're doing
-		f.write( 'delta: %.6f\n' % ( delta ) )
-		f.write( 'venues: %d\n' % (dbw.count_venues_in_database()) )
-		f.write( 'start_points: %d\n' % len(start_points) )
-		f.flush()
+		logging.info( 'delta: %.6f\n' % ( delta ) )
+		logging.info( 'venues: %d\n' % (dbw.count_venues_in_database()) )
+		logging.info( 'start_points: %d\n' % len(start_points) )
 
 def get_venues_near( lat, lng, api ):
-	venues = []
 	# try and get some venues, and try and deal with any errors that occur.
-	while not venues:
+	while True:
 		try:
 			venues = api.find_venues_near( lat, lng )
+			return venues
 		except HTTPError as e:
-			print e
+			logging.debug(e)
 			if e.code == 403:
+				logging.debug('got an error, sleeping')
 				time.sleep(60*60*15)
-	return venues
 
 if __name__ == "__main__":
-	search_venues('51.475717','-3.179170','0.050000' )	
+	search_venues('51.453470', '-2.591060','0.0050000' )	

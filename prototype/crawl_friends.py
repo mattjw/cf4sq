@@ -52,7 +52,7 @@ if __name__ == "__main__":
     #
     # Logging
     import logging
-    logging.basicConfig( filename="crawl_friends.log", level=logging.DEBUG, 
+    logging.basicConfig( filename="4sq.log", level=logging.DEBUG, 
         datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
     logging.info( 'initiating a friend crawl.' )
 
