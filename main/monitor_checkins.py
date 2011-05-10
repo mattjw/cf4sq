@@ -65,14 +65,14 @@ if __name__ == "__main__":
 	client_secret = _credentials.client_secret[city_code]
 	access_tokens = _credentials.access_tokens[city_code]
 
-	logging.info('client_id: %s' % client_id)
-	logging.info('client_secret: %s' % client_secret)
-	logging.info('access_tokens: %s' % access_tokens[0])
+	logging.info('%s client_id: %s' % (city_code, client_id))
+	logging.info('%s client_secret: %s' % (city_code, client_secret))
+	logging.info('%s access_tokens: %s' % (city_code, access_tokens[0]))
 
 	centres = {'CDF' : Point(51.476251, -3.17509), 'BRS' : Point(51.450477, -2.59466), 'CAM' : Point(52.207870, 0.12712)}
 	centre = centres[city_code]
 
-	logging.info('centre: ' % centre)
+	logging.info('%s centre: %s' % (city_code, centre))
 
 	# use venue gateway not normal gateway so can do more than 500 calls an hour
 	venues = dbw.get_all_venues()
@@ -86,17 +86,17 @@ if __name__ == "__main__":
 	api = APIWrapper( gateway )
 	venue_api = APIWrapper( venue_gateway )
 
-	logging.info('api gateways initialised')
+	logging.info('%s api gateways initialised' % city_code)
 
 	polygon = centre.buffer(0.25, resolution=20)
 
-	logging.info('bounding polygon: %s' % polygon)
+	logging.info('%s bounding polygon: %s' % (city_code, polygon))
 
 	while True:
 		count_venues = 0
 		count_checkins = 0
 		count_venues_with_checkins = 0
-		logging.info('start running checkin crawl')
+		logging.info('start running checkin crawl in %s' % city_code)
 		crawl_string = 'VENUES_RUN_' + city_code
 		dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 		for venue in venues:
@@ -107,14 +107,14 @@ if __name__ == "__main__":
 					lng = location.longitude
 					point = Point(lat,lng)
 					if point_inside_polygon(point, polygon):
-						logging.info( 'retrieve details for venue: %s' % ( venue.name.encode('utf-8') ) )
+						logging.info( '%s: retrieve details for venue: %s' % ( city_code, venue.name.encode('utf-8') ) )
 						response = get_venue_details( venue.foursq_id )
 						count_venues = count_venues + 1
 						v = response.get( 'response' )
 						v = v.get( 'venue' )
 						hereNow = v.get( 'hereNow' )
 						count = hereNow.get( 'count' )
-						logging.info( 'checkins found: %d' % ( count ) )
+						logging.info( '%s: checkins found: %d' % ( city_code, count ) )
 						if count > 0:
 							count_venues_with_checkins = count_venues_with_checkins + 1
 							response = api.query_resource( "venues", venue.foursq_id, "herenow" )
@@ -123,12 +123,12 @@ if __name__ == "__main__":
 							items = hereNow['items']
 							for item in items:
 								count_checkins = count_checkins + 1
-								logging.info( 'Adding checkin' )
+								logging.info( '%s: Adding checkin' % city_code )
 								dbw.add_checkin_to_database(item, venue)
 		dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now( ))
-		logging.info( 'venues checked: %d' % ( count_venues ) )
-		logging.info( 'venues with checkins: %d' % ( count_venues_with_checkins ) )
-		logging.info( 'checkins: %d' % ( count_checkins ) )
+		logging.info( '%s venues checked: %d' % ( city_code, count_venues ) )
+		logging.info( '%s venues with checkins: %d' % ( city_code, count_venues_with_checkins ) )
+		logging.info( '%s checkins: %d' % ( city_code, count_checkins ) )
 
 	
 

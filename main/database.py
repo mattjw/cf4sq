@@ -26,6 +26,9 @@ from sqlalchemy.orm import relationship, backref
 Base = declarative_base()
 
 class Category( Base ):
+    """
+    Categories of venues. Does not store the hierarchical structure of foursquare categories.
+    """
     __tablename__ = 'categories'
 
     id = Column( Integer, primary_key=True )
