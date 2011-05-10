@@ -98,6 +98,12 @@ class DBWrapper( object ):
         self.session.add( s )
         self.session.commit( )
         return s
+
+    def add_crawl_to_database( self, crawltype, flag, date  ):
+        c = CrawlLog(crawltype, flag, date)
+        self.session.add(c)
+        self.session.commit()
+        return c
     
     
     #### friendship ####
@@ -276,7 +282,12 @@ class DBWrapper( object ):
                   ( SELECT * FROM checkins WHERE venues.id=checkins.venue_id ) """
         venues = self.session.query(Venue).from_statement(stmt).all()
         return venues
-
+    
+    def is_active(self, venue):
+        if len(venue.statistics) > 1:
+            return venue.statistics[0].checkins < venue.statistics[-1].checkins
+        else:
+            return False
 
     #### checkins ####
 
@@ -410,6 +421,8 @@ class DBWrapper( object ):
             engine.create(Search.__table__)
         if not engine.has_table('friendships'):
             engine.create(Friendship.__table__)
+        if not engine.has_table('crawllog'):
+            engine.create(CrawlLog.__table__)
 
     def __drop_tables__( self ):
         """

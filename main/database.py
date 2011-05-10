@@ -36,6 +36,22 @@ class Category( Base ):
         self.name = name
         self.foursq_id = foursq_id
 
+class CrawlLog( Base ):
+    __tablename__ = 'crawllog'
+
+    id = Column( Integer, primary_key=True )
+    crawltype = Column( String )
+    flag = Column( String )
+    date = Column( DateTime )
+
+    def __init__( self, crawltype, flag, date ):
+        self.crawltype = crawltype
+        self.flag = flag
+        self.date = date
+
+    def __repr__( self ):
+        return "<Crawl('%s', '%s', '%s')>" % (self.crawltype, self.flag, self.date)
+
 class Location( Base ):
     __tablename__ = 'locations'
 
