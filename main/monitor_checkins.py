@@ -33,19 +33,22 @@ OS X users can obtain a port of GEOS here: http://www.kyngchaos.com/software:fra
 """
 
 def get_venue_details( id ):
+	delay = 1
 	while True:
 		try :
 			response = venue_api.query_resource( "venues", id )
 			return response, True
 		except HTTPError as e:
-			if e.code == 500 or e.code == 504:
-				logging.debug('%s error, sleeping' % e.code)
-				time.sleep(60)
-			if e.code == 400:
-				return response, False
-			logging.debug(e)
-		except Exception, e:
-			logging.debug('General Error, retrying')
+			if e.code in [500,501,502,503,504]:
+				logging.debug('%s error, sleeping for %d seconds' % (e.code, delay))
+				time.sleep(delay)
+				if delay < (60 * 15):
+					delay = delay * 2
+				else:
+					return venues, False
+			if e.code in [400,401,403,404,405]:
+				return venues, False
+				logging.debug('%s error, moving on' % e.code)	
 			logging.debug(e)
 
 def point_inside_polygon(point,poly):
