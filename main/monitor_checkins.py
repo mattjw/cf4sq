@@ -45,10 +45,13 @@ def get_venue_details( id ):
 				if delay < (60 * 15):
 					delay = delay * 2
 				else:
-					return venues, False
+					return response, False
 			if e.code in [400,401,403,404,405]:
-				return venues, False
+				return response, False
 				logging.debug('%s error, moving on' % e.code)	
+			logging.debug(e)
+		except Exception as e:
+			logging.debug('General Error, retrying')
 			logging.debug(e)
 
 def point_inside_polygon(point,poly):
@@ -105,7 +108,7 @@ if __name__ == "__main__":
 		count_checkins = 0
 		count_venues_with_checkins = 0
 		logging.info('start running checkin crawl in %s' % city_code)
-		crawl_string = 'VENUES_RUN_' + city_code
+		crawl_string = 'MONITOR_CHECKINS_' + city_code
 		dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 		for venue in venues:
 			if venue.city_code == city_code:

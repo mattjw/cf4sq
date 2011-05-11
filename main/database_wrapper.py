@@ -100,6 +100,15 @@ class DBWrapper( object ):
         return s
 
     def add_crawl_to_database( self, crawltype, flag, date  ):
+        """
+        Input   'crawltype': The type of crawl being carried out, Venue Search, Monitor Checkins, Check Stats etc.
+                'flag': Flag for 'START' or 'FINISH' of the crawl.
+                'date': Time the crawl was started or stopped.
+
+        Adds a log to the database when a particular crawl is started.
+
+        Output  The CrawlLog object
+        """
         c = CrawlLog(crawltype, flag, date)
         self.session.add(c)
         self.session.commit()
@@ -284,12 +293,25 @@ class DBWrapper( object ):
         return venues
     
     def is_active(self, venue):
+        """
+        Checks to see if a venue is active. Compares the first number of recorded checkins against
+        the most recent number of recorded checkins. If there are new checkins, the venue is active,
+        if not, the venue is inactive.
+
+        Output:  True/False depending on if the venue is active
+        """
+        # need more than 1 statistic to figure out if the venue is active
         if len(venue.statistics) > 1:
             return venue.statistics[0].checkins < venue.statistics[-1].checkins
         else:
             return False
 
     def get_all_venues( self, citycode ):
+        """
+        Retrieves all venues from the database with the given citycode
+
+        Output: a list of Venue objects
+        """
         return self.session.query( Venue ).filter(Venue.city_code == citycode).all( )
 
     #### checkins ####

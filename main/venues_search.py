@@ -41,8 +41,6 @@ def search_venues( lat, lng, delta, city_code, num_venues=6000 ):
 	gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret )
 
 	logging.info('start venue search crawl %s' % city_code)
-	crawl_string = 'Venue Search' + city_code
-	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 
 	# coordinates are stored as Decimal objects to prevent stupid rounding/storage errors
 	getcontext().prec = 7
@@ -57,8 +55,6 @@ def search_venues( lat, lng, delta, city_code, num_venues=6000 ):
 
 	# start checking venues
 	check_points( start_points, checked_points, api, delta, dbw, num_venues, city_code )
-
-	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
 
 def get_points_surrounding( point, delta ):
 	"""
@@ -175,6 +171,15 @@ if __name__ == "__main__":
 	BRS = ['51.450477', '-2.59466']
 	CAM = ['52.207870', '0.12712']
 
+	crawl_string = 'VENUES_SEARCH_CDF'
+	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 	search_venues(CDF[0], CDF[1],'0.0050000', 'CDF')
+	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
+	crawl_string = 'VENUES_SEARCH_BRS'
+	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 	search_venues(BRS[0], BRS[1],'0.0050000', 'BRS')
+	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
+	crawl_string = 'VENUES_SEARCH_CAM'
+	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 	search_venues(CAM[0], CAM[1],'0.0050000', 'CAM')
+	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())

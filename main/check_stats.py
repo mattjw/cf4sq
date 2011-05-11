@@ -7,18 +7,27 @@ from api import *
 from exceptions import Exception
 
 def get_venue_details( id ):
+	delay = 1
 	while True:
 		response = ''
 		try :
 			response = venue_api.query_resource( "venues", id )
 			return response, True
-		except HTTPError, e:
-			logging.debug('HTTPError code %d for venue %s' % (e.code, id))
-			if e.code == 400:
+		except HTTPError as e:
+			if e.code in [500,501,502,503,504]:
+				logging.debug('%s error, sleeping for %d seconds' % (e.code, delay))
+				time.sleep(delay)
+				if delay < (60 * 15):
+					delay = delay * 2
+				else:
+					return response, False
+			if e.code in [400,401,403,404,405]:
 				return response, False
+				logging.debug('%s error, moving on' % e.code)	
 			logging.debug(e)
-		except Exception, e:
+		except Exception as e:
 			logging.debug('General Error, retrying')
+			logging.debug(e)
 
 
 if __name__ == "__main__":
@@ -33,9 +42,12 @@ if __name__ == "__main__":
 	
 	venue_api = APIWrapper( venue_gateway )
 
+	crawl_string = 'CHECK_STATS'
+	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
+
 	count_venues = 0
 	for venue in venues:
-		logging.info( 'retrieve details for venue: %s' % ( venue.name.encode('utf-8') ) )
+		logging.info( '%s: retrieve details for venue: %s' % ( venue.city_code, venue.name.encode('utf-8') ) )
 		response, success = get_venue_details( venue.foursq_id )
 		if success:
 			count_venues = count_venues + 1
@@ -44,3 +56,5 @@ if __name__ == "__main__":
 			stats = v.get( 'stats' )
 			dbw.add_statistics_to_database(venue,stats)	
 	logging.info( 'venues checked: %d' % ( count_venues ) )
+
+	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
