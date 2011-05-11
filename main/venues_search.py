@@ -21,22 +21,28 @@ from venues_api import VenueAPIGateway
 from decimal import *
 from urllib2 import HTTPError
 from random import randint
+from datetime import datetime as now
 import datetime
 import time
 import logging
 
-def search_venues( lat, lng, delta, num_venues=5000 ):
+def search_venues( lat, lng, delta, city_code, num_venues=6000 ):
 	"""
 	Searches for venues in foursquare. Starts at a given point ('lat,'lng') moving outwards, until the 
 	given 'num_venues' are found. 'delta' is used to tune the distance that searches are made away from a central point.
 	"""
 	import _credentials
+	dbw = DBWrapper()
 
 	# load credentials
-	client_id = _credentials.client_id
-	client_secret = _credentials.client_secret
+	client_id = _credentials.sc_client_id
+	client_secret = _credentials.sc_client_secret
 	# use venue gateway not normal gateway so can do 5000 calls an hour
 	gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret )
+
+	logging.info('start venue search crawl %s' % city_code)
+	crawl_string = 'Venue Search' + city_code
+	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
 
 	# coordinates are stored as Decimal objects to prevent stupid rounding/storage errors
 	getcontext().prec = 7
@@ -47,10 +53,12 @@ def search_venues( lat, lng, delta, num_venues=5000 ):
 	checked_points = []
 
 	start_points.append({'lat':Decimal(lat),'lng':Decimal(lng)})
+	logging.info('add start point: (%s, %s)' % (lat, lng))
 
-	dbw = DBWrapper()
 	# start checking venues
-	check_points( start_points, checked_points, api, delta, dbw, num_venues )
+	check_points( start_points, checked_points, api, delta, dbw, num_venues, city_code )
+
+	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
 
 def get_points_surrounding( point, delta ):
 	"""
@@ -74,21 +82,22 @@ def get_points_surrounding( point, delta ):
 	return points
 
 
-def check_points( start_points, checked_points, api, initial_delta, dbw, num_venues ):
+def check_points( start_points, checked_points, api, initial_delta, dbw, num_venues, city_code ):
 	"""
 	Find foursquare venues and add them to the database. 
 	"""
 
 	delta = initial_delta
+        venues = dbw.get_all_venues(city_code)
 	# do we have an area to check or have we found enough venues?
-	while start_points and dbw.count_venues_in_database() < num_venues:
+	while start_points and len(dbw.get_all_venues(city_code)) < num_venues:
 		# take a new start point
 		start_point = start_points[randint(0,len(start_points)-1)]
 
 		lat = start_point['lat']
 		lng = start_point['lng']
 
-		logging.info( 'start point: %.6f,%.6f\n' % ( float(lat), float(lng) ) )
+		logging.info( ' %s: start point: %.7f,%.7f' % (city_code, float(lat), float(lng) ) )
 		# how many venues do we have already?
 		num_venues_pre = dbw.count_venues_in_database()
 		
@@ -100,55 +109,72 @@ def check_points( start_points, checked_points, api, initial_delta, dbw, num_ven
 			if not point in checked_points:
 				
 				# get the venues in the area
-				venues = get_venues_near( point['lat'], point['lng'], api )
+				venues, success = get_venues_near( point['lat'], point['lng'], api )
 
 				# add the venues to the database
-				for venue in venues:
-					dbw.add_venue_to_database( venue )
+				if success:
+					for venue in venues:
+						dbw.add_venue_to_database( venue, city_code )
 				
 				# mark this central point as checked
 				checked_points.append( start_point )
-				# record the search
-				dbw.add_search_to_database( datetime.datetime.now(), lat, lng )
 		
 		# how many venues do we have now?
 		num_venues_post = dbw.count_venues_in_database()
 
 		# no new venues, so move to a new start point
 		if num_venues_pre == num_venues_post:
-			logging.info( 'no new venues, moving to new start point\n' )
+			logging.info( '%s: no new venues, moving to new start point' % (city_code) )
 			# don't check this point again!
 			point = start_points.pop(0)
 			# reset delta
 			delta = initial_delta
-			logging.info( 'point removed: %.7f %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
+			logging.info( '%s: point removed: %.7f %.7f' % ( city_code, float( point['lat'] ), float( point['lng'] ) ) )
 			# get some new start points away from this point
 			points = get_points_surrounding( point, delta )
 			for point in points:
 				if not point in start_points and not point in checked_points:
 					start_points.append( point )
-					logging.info( 'new start point: %.7f, %.7f\n' % ( float( point['lat'] ), float( point['lng'] ) ) )
+					logging.info( '%s: new start point: %.7f, %.7f' % ( city_code, float( point['lat'] ), float( point['lng'] ) ) )
 		# found new venues, so search this area more
 		else:
-			logging.info( 'new venues, keeping start point and decreasing radius' )
+			logging.info( '%s: new venues, keeping start point and decreasing radius' % city_code )
 			delta = delta / 2
 
 		# let us know how we're doing
-		logging.info( 'delta: %.6f\n' % ( delta ) )
-		logging.info( 'venues: %d\n' % (dbw.count_venues_in_database()) )
-		logging.info( 'start_points: %d\n' % len(start_points) )
+		logging.info( '%s: delta: %.6f\n' % (city_code, delta ) )
+		logging.info( '%s: venues: %d\n' % (city_code, len(dbw.get_all_venues(city_code))))
+		logging.info( '%s: start_points: %d\n' % (city_code, len(start_points) ) )
 
 def get_venues_near( lat, lng, api ):
 	# try and get some venues, and try and deal with any errors that occur.
+	delay = 1
 	while True:
 		try:
 			venues = api.find_venues_near( lat, lng )
-			return venues
+			return venues, True
 		except HTTPError as e:
+			if e.code in [500,501,502,503,504]:
+				logging.debug('%s error, sleeping for %d seconds' % (e.code, delay))
+				time.sleep(delay)
+				if delay < (60 * 15):
+					delay = delay * 2
+				else:
+					return venues, False
+			if e.code in [400,401,403,404,405]:
+				return venues, False
+				logging.debug('%s error, moving on' % e.code)	
 			logging.debug(e)
-			if e.code == 403:
-				logging.debug('got an error, sleeping')
-				time.sleep(60*60*15)
+		except Exception as e:
+			logging.debug('General Error, retrying')
+			logging.debug(e)
 
 if __name__ == "__main__":
-	search_venues('51.453470', '-2.591060','0.0050000' )	
+
+	CDF = ['51.476251', '-3.17509']
+	BRS = ['51.450477', '-2.59466']
+	CAM = ['52.207870', '0.12712']
+
+	search_venues(CDF[0], CDF[1],'0.0050000', 'CDF')
+	search_venues(BRS[0], BRS[1],'0.0050000', 'BRS')
+	search_venues(CAM[0], CAM[1],'0.0050000', 'CAM')

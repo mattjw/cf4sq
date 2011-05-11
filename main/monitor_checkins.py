@@ -26,17 +26,26 @@ import logging
 import sys
 
 """
-Uses the Shapely package for doing testing of whether a point is within a given search location. Shapely can be obtained
-by the usual python methods (easy_install etc) but does rely on the GEOS framework. OS X users can obtain a port of GEOS here:
-http://www.kyngchaos.com/software:frameworks
+Uses the Shapely package for doing testing of whether a point is within a given search location. 
+
+Shapely can be obtained by the usual python methods (easy_install etc) but does rely on the GEOS framework. 
+OS X users can obtain a port of GEOS here: http://www.kyngchaos.com/software:frameworks
 """
 
 def get_venue_details( id ):
 	while True:
 		try :
 			response = venue_api.query_resource( "venues", id )
-			return response
+			return response, True
+		except HTTPError as e:
+			if e.code == 500 or e.code == 504:
+				logging.debug('%s error, sleeping' % e.code)
+				time.sleep(60)
+			if e.code == 400:
+				return response, False
+			logging.debug(e)
 		except Exception, e:
+			logging.debug('General Error, retrying')
 			logging.debug(e)
 
 def point_inside_polygon(point,poly):
@@ -76,11 +85,7 @@ if __name__ == "__main__":
 
 	# use venue gateway not normal gateway so can do more than 500 calls an hour
 	venues = dbw.get_all_venues()
-	if len(venues)*3 < 5000:
-		calls = len(venues)*3
-	else:
-		calls = 5000
-	venue_gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret, token_hourly_query_quota=calls )
+	venue_gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret, token_hourly_query_quota=5000 )
 	gateway = APIGateway( access_tokens=access_tokens, token_hourly_query_quota=500 )
 
 	api = APIWrapper( gateway )

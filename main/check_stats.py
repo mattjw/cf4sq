@@ -22,17 +22,12 @@ def get_venue_details( id ):
 
 
 if __name__ == "__main__":
-	#
-	# Logging
-	logging.basicConfig( filename="4sq.log", level=logging.DEBUG, 
-		datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
-	logging.info( 'checkin monitor initiated' )
 
 	dbw = DBWrapper()
 	# load credentials
 	client_id = _credentials.sc_client_id
 	client_secret = _credentials.sc_client_secret
-	venue_gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret, token_hourly_query_quota=4500 )
+	venue_gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret, token_hourly_query_quota=5000 )
 
 	venues = dbw.get_all_venues()
 	

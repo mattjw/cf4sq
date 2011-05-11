@@ -184,7 +184,7 @@ class DBWrapper( object ):
                     v.append(venue)
         return v
     
-    def add_venue_to_database( self, venue ):
+    def add_venue_to_database( self, venue, citycode ):
         """
         Input       'venue': dict containing venue information with 'id', 'name' and 'verified' keys and dicts with location, 
                     statistic and category information
@@ -201,7 +201,7 @@ class DBWrapper( object ):
             loc = venue['location']
             l = self.add_location_to_database( loc )
             
-            v = Venue( foursq_id=venue['id'], name=venue['name'], verified=venue['verified'], location_id=l.id )
+            v = Venue( foursq_id=venue['id'], name=venue['name'], verified=venue['verified'], location_id=l.id, city_code=citycode )
             
             categories = venue['categories']
             for category in categories:
@@ -288,6 +288,9 @@ class DBWrapper( object ):
             return venue.statistics[0].checkins < venue.statistics[-1].checkins
         else:
             return False
+
+    def get_all_venues( self, citycode ):
+        return self.session.query( Venue ).filter(Venue.city_code == citycode).all( )
 
     #### checkins ####
 
