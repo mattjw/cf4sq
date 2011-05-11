@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011 Matthew J Williams & Martin J Chorley
+# Copyright 2011 Martin J Chorley & Matthew J Williams
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
