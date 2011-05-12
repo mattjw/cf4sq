@@ -245,11 +245,6 @@ class APIGateway:
             raise FoursquareRequestError( response_code, error_type, 
                 error_detail )
         
-        
-        print "\t\t\t\t<<exec [%s]>>" % [time.gmtime()[4:6]]   #~!~
-
-        
-        
         #
         # Fin
         return py_data 
