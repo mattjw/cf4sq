@@ -20,6 +20,7 @@ import json
 import urllib
 import urllib2
 import copy
+import threading 
 
 
 class APIGateway:
@@ -31,48 +32,71 @@ class APIGateway:
     across all available access tokens. This is done simply cycling though
     the access tokens.
     
+    The gateway discriminates between userlesss and authenticated access. 
+    Userless access required a client ID and client secret to issue
+    a query. Authenticated access requires an access token. 
+    Userless and authenticated access use independent rates. The gateway
+    handles these appropriately. 
+    Userless access permits only a subset of the foursquare API functions. 
+    Authenticated access allows access to all API functions. 
+    
     Provides local query rate limiting. If specified, the gateway will delay
     issuing API queries to prevent exceeding the hourly request quota of a
     token.
-    
+    [Note: For the moment, query limiting is REQUIRED! ~MJW]
     The rate limiting may be improved with the knowledge that the foursquare
     rate limit is a limit per endpoint, rather than a limit per access token.
     For now, a limit per token is assumed.
     """
     
-    def __init__( self, access_tokens, token_hourly_query_quota=None ):
+    def __init__( self, auth_access_tokens, auth_hourly_quota,
+                        client_credentials, userless_hourly_quota ):
         """
-        `access_tokens` may be a sequence of access tokens or a single
+        ## Authenticated Access Args ##
+        `auth_access_tokens` may be a sequence of access tokens or a single
         access token (i.e., string).
         
-        `token_hourly_query_quota` is the maximum number of queries per hour
-        for a single access token. Thus, the max number of queries per hour
-        is given by
-            len( access_tokens ) * token_hourly_query_quota .
-        If `None` then the gateway will not enforce any limiting.
+        `auth_hourly_quota` is the maximum number of queries per hour
+        for a single access token. Thus, the max number of authenticated 
+        queries per hour is given by
+            len( auth_access_tokens ) * auth_hourly_quota .
+        
+        ## Userless Access Args ##
+        `client_credentials` a sequences of 2-tuples, or a single 2-tuple. 
+        Each 2-tuple as (client_id, client_secret).
+        
+        `userless_hourly_quota` is the maximum number of USERLESS queries per
+        hour for a single client. Thus, the max number of authenticated 
+        queries per hour is given by
+            len( client_credentials ) * userless_hourly_quota .
         """
         #
-        # Access tokens...
-        if not getattr( access_tokens, '__iter__', False ):
-            # If it's doesn't have an iterator, then we assume it's a string, 
+        # (Authenticated) access tokens...
+        if not getattr( auth_access_tokens, '__iter__', False ):
+            # If it doesn't have an iterator, then we assume it's a string, 
             # and therefore only one access token has been given.
-            access_tokens = [ access_tokens ]
+            auth_access_tokens = [ auth_access_tokens ]
         
-        self.access_tokens = access_tokens
-        self.next_access_token_index = 0
+        self.auth_access_tokens = auth_access_tokens
+        self.next_auth_access_token_index = 0
         
         #
-        # Query delaying...
-        if token_hourly_query_quota is not None:
-            max_per_hour = token_hourly_query_quota * len( access_tokens )
-            query_interval = ( 60 * 60 ) / float( max_per_hour )   # in seconds
+        # Userless access...
+        if len( client_credentials ) == 2:
+            # The inputted `client_credentials` is a sequence of two:
+            # it may be a 2-tuple for a single client, or it may be
+            # a sequence of two clients.
+            # We'll check the first element in this sequence to see if it's
+            # a client ID or a 2-tuple.
             
-            self.earliest_query_time = time.time()   # as secs since unix epoch
-            self.query_interval = query_interval
-                # The time to wait between issuing queries
-        else:
-            self.query_interval = None
-            self.earliest_query_time = None 
+            first_elm = client_credentials[0]
+            if not getattr( first_elm, '__iter__', False ):
+                # If it doesn't have an iterator, then we assume it's a string, 
+                # and therefore the argument is a credentials tuple.
+                client_credentials = [ client_credentials ]
+        
+        self.client_credentials = client_credentials
+        self.next_client_index = 0
         
         #
         # URL...
@@ -81,18 +105,83 @@ class APIGateway:
         path_prefix = '/v2'
         self.api_base_url = scheme + netloc + path_prefix 
         
-    def query( self, path_suffix, get_params ):
+        #
+        # Query limiting -- authenticated access...
+        max_per_hour = auth_hourly_quota * len( auth_access_tokens )
+        query_interval = ( 60 * 60 ) / float( max_per_hour )   # in seconds
+            # The time to wait between issuing queries
+        
+        self.__auth_monitor = {'wait':query_interval,
+                               'earliest':None,
+                               'timer':None}
+        
+        #
+        # Query limiting -- userless access...
+        max_per_hour = userless_hourly_quota * len( client_credentials )
+        query_interval = ( 60 * 60 ) / float( max_per_hour )   # in seconds
+            # The time to wait between issuing queries
+        
+        self.__userless_monitor = {'wait':query_interval,
+                                   'earliest':None,
+                                   'timer':None}
+    
+    def __rate_controller( self, monitor_dict ):
+        """
+        Internal function to delay time as necessary. 
+        This is general: depending on the `monitor_dict`, either the
+        userless queries or the authenticated queries can be delayed.
+        
+        The methods functions as follows:
+        1. join the timer that has been elapsing in the background.
+        2. if the timer still hasn't finished yet, then we wait for it
+          (causing the main thread to pause here too).
+        3. update the monitor for the next delay. start the background timer.
+        
+        Fields of the monitor dictionary will be updated by this method.
+        Dictionary fields understood as follows:
+         * wait: the amount of time to wait between queries.
+         * earliest: the earliest time that the next query should be issued.
+         * timer: a backround thread that monitors the time for this particular
+                  delay.
+        """
+        #
+        # Cause main thread to wait until the desired time has elapsed.
+        # If this is the first query for this monitor, then the timer is None
+        # and we don't do any waiting.
+        if monitor_dict['timer'] is not None:
+            monitor_dict['timer'].join()   # causes main thread to sit and wait
+                                           # for this monitor to elapse
+            
+            # Waste time in the (unlikely) case that the timer thread finished
+            # early.
+            while time.time() < monitor_dict['earliest']:
+                time.sleep( monitor_dict['earliest'] - time.time() )
+            
+            
+        #
+        # Prepare for next call and start timer...
+        earliest = time.time() + monitor_dict['wait']
+        timer = threading.Timer( earliest-time.time(), lambda: None )
+        monitor_dict['earliest'] = earliest
+        monitor_dict['timer'] = timer
+        monitor_dict['timer'].start()
+        
+    def query( self, path_suffix, get_params, userless=False ):
         """
         Issue a query to the foursquare web service.
         
-        This method will handle inserting an access_token; thus, a token should
-        not be included in the inputted GET parameters. Such a parameter will
-        be overwritten.
+        This method will handle inserting an access_token or client credentials;
+        thus, a token should not be included in the inputted GET parameters. 
+        Such a parameter will be overwritten.
         
         `get_params` is the GET parameters; a dictionary.
         
         `path_suffix` is appended to the API's base path. The left-most
         '/' is inserted if absent.s
+        
+        `userless` is a boolean specifying whether the access will be
+        userless. If `userless` is False then authenticated access will be used.
+        The method defaults to using authenticated access.
         
         If query is successful the method returns JSON data encoded as
         python objects via `json.loads()`.
@@ -103,19 +192,32 @@ class APIGateway:
         are included; i.e., meta, notifications, response.
         """
         #
-        # Do sleep for delay query if necessary...
-        if self.query_interval is not None:
-            while time.time() < self.earliest_query_time:
-                sleep_dur = self.earliest_query_time - time.time()
-                time.sleep( sleep_dur )
-                #~ Potential for scheduler thrashing if time difference
-                #  is tiny? Near-zero millis rounded down => repeated looping?
+        # Cause rate delay...
+        if userless:
+            self.__rate_controller( self.__userless_monitor )
+        else:
+            self.__rate_controller( self.__auth_monitor )
+        
+        #
+        # Params sanitising -- erase any tokens and client creds...
+        params = copy.copy( get_params )
+        for fld in ['oauth_token','client_id','client_secret']:
+            if fld in params:
+                del params[fld]
         
         #
         # Build & issue request...
-        params = copy.copy( get_params )
-        token = self.access_tokens[self.next_access_token_index]
-        params['oauth_token'] = token
+        if userless:
+            (client_id,client_secret) = self.client_credentials[self.next_client_index]
+            params['client_id'] = client_id
+            params['client_secret'] = client_secret
+            self.next_client_index = \
+                ( self.next_client_index + 1 ) % len( self.client_credentials )
+        else:
+            token = self.auth_access_tokens[self.next_auth_access_token_index]
+            params['oauth_token'] = token
+            self.next_auth_access_token_index = \
+                ( self.next_auth_access_token_index + 1 ) % len( self.auth_access_tokens )
         
         path_suffix = path_suffix.lstrip( '/' )
         
@@ -143,13 +245,10 @@ class APIGateway:
             raise FoursquareRequestError( response_code, error_type, 
                 error_detail )
         
-        #
-        # Prep for next call...
-        self.next_access_token_index = \
-            ( self.next_access_token_index + 1 ) % len( self.access_tokens )
         
-        if self.query_interval is not None:
-            self.earliest_query_time = time.time() + self.query_interval
+        print "\t\t\t\t<<exec [%s]>>" % [time.gmtime()[4:6]]   #~!~
+
+        
         
         #
         # Fin
@@ -181,7 +280,7 @@ class APIWrapper( object ):
         """
         self.gateway = gateway
         
-    def query_resource( self, resource_type, id, aspect=None, get_params={} ):
+    def query_resource( self, resource_type, id, aspect=None, get_params={}, userless=False ):
         """
         Issue a query regarding a resource with a specific ID.
         
@@ -204,6 +303,8 @@ class APIWrapper( object ):
             an aspect is not specified then the resource itself is returned.
         `get_params`
             The GET parameters for the query. A dictionary.
+        `userless`
+            Issue as a userless query rather than an authenticated query.
         
         The JSON stream returned by the foursquare API is decoded into Python
         data structures (lists, dictionaries, etc.) and returned by this
@@ -215,9 +316,9 @@ class APIWrapper( object ):
         if aspect:
             path_suffix += "/%s" % aspect
         
-        return self.gateway.query( path_suffix, get_params )
+        return self.gateway.query( path_suffix, get_params, userless=userless )
         
-    def query_routine( self, resource_type, routine, get_params={} ):
+    def query_routine( self, resource_type, routine, get_params={}, userless=False ):
         """
         Some resources also offer 'routine', which do not require any ID.
         This helps with issuing routine queries to the API.
@@ -236,6 +337,8 @@ class APIWrapper( object ):
             The routine associated with the resource type.
         `get_params`:
             The GET parameters for the query. A dictionary.
+        `userless`
+            Issue as a userless query rather than an authenticated query.
         
         The JSON stream returned by the foursquare API is decoded into Python
         data structures (lists, dictionaries, etc.) and returned by this
@@ -245,7 +348,7 @@ class APIWrapper( object ):
         path_suffix = "/%s" % resource_type
         path_suffix += "/%s" % routine
         
-        return self.gateway.query( path_suffix, get_params )
+        return self.gateway.query( path_suffix, get_params, userless=userless )
         
     def find_venues_near( self, lat, long, limit=50 ):
         """
@@ -315,15 +418,84 @@ class APIWrapper( object ):
         user = response['user'] # a dict
         return user
 
+
 if __name__ == "__main__":
     import _credentials
-    tokens = _credentials.access_tokens
-    gateway = APIGateway( tokens )
+    city_code = 'CDF'
+        
+    client_id = _credentials.client_id[city_code]
+    client_secret = _credentials.client_secret[city_code]
+    client_tuples = [(client_id, client_secret)]
+    
+    access_tokens = _credentials.access_tokens[city_code]
+    
+    gateway = APIGateway( access_tokens, 163, client_tuples, 600 )
     api = APIWrapper( gateway )
     
+    # acces_tokens: 163 per hour = 1 every 22s
+    # client_tups: 600 per hour = 1 every 6s
+    
+    
+    print 
+    print "## Compare userless vs. authed results"
+    print "checksum userless:"
+    print len( repr( api.query_resource( "venues", "591313", userless=True ) ) )
+    print "checksum authed:"
+    print len( repr( api.query_resource( "venues", "591313", userless=False ) ) )
+    print "checksum userless:"
+    print len( repr( api.query_resource( "venues", "591313", userless=True ) ) )
+    print "checksum authed:"
+    print len( repr( api.query_resource( "venues", "591313", userless=False ) ) )
+    
+    
+    print 
+    print "## Testing timing..."
+    
+    # First two are never delayed, so don't test their calls...
+    api.query_resource( "venues", "591313", userless=False )    
+    api.query_resource( "venues", "591313", userless=True )    
+    
+    print "\n\n<<authed [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=False )    
+    #print rt
+    
+    print "\n\n<<authed [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=False )    
+    #print rt
+    
+    print "\n\n<<userless [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=True )
+    #print rt
+
+    print "\n\n<<userless [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=True )
+    #print rt
+
+    print "\n\n<<userless [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=True )
+    #print rt
+    
+    print "\n\n<<userless [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=True )
+    #print rt
+    
+    print "\n\n<<userless [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=True )
+    #print rt
+    
+    print "\n\n<<authed [%s]>>" % [time.gmtime()[4:6]]
+    rt = api.query_resource( "venues", "591313", userless=False )    
+    #print rt
+
+    print "\n\n<<fin... [%s]>>" % [time.gmtime()[4:6]]
+    
+    
     print "Grab friends from a non-existent user..."
-    friends = api.get_friends_of( 23432190333 )
-    print len( friends )
+    try:
+        friends = api.get_friends_of( 23432190333 )
+        print len( friends )
+    except Exception, e:
+        print e
     
     print "Grab all the friends of a very popular user..."
     friends = api.get_friends_of( 1235468 )
@@ -353,18 +525,3 @@ if __name__ == "__main__":
     for v in venues:
         print v['name']
     
-    print "Try out some API limiting..."
-    gateway = APIGateway( tokens, 60 )   
-    gateway = APIGateway( tokens, 28800 )
-    gateway = APIGateway( tokens[0], 500 )
-    # 60 reqs per hour per token for two tokens => 1 req per 30 secs   
-    # 28,800 reqs per hour per token for two tokens => 1 req per 0.25 secs
-    # 500 reqs per hour per token for one token => 1 req per 7.2 secs
-    
-    api = APIWrapper( gateway )
-
-    print "Start time: %s" % time.time()
-    print "(About to issue 5 queries...)"
-    for _ in range(5):
-        api.query_resource( "venues", "591313" )
-    print "Finish time: %s" % time.time()
