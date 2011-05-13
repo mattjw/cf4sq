@@ -21,6 +21,7 @@ import urllib
 import urllib2
 import copy
 import threading 
+import logging
 
 
 class APIGateway:
@@ -274,8 +275,8 @@ class APIWrapper( object ):
         API queries will be issued.
         """
         self.gateway = gateway
-        
-    def query_resource( self, resource_type, id, aspect=None, get_params={}, userless=False ):
+    
+    def query_resource( self, resource_type, id, aspect=None, get_params={}, userless=False, tenacious=False ):
         """
         Issue a query regarding a resource with a specific ID.
         
@@ -300,6 +301,9 @@ class APIWrapper( object ):
             The GET parameters for the query. A dictionary.
         `userless`
             Issue as a userless query rather than an authenticated query.
+        `tenacious`:
+            If True, will query in 'tenacious mode'. See method 
+            `__query_tenaciously`.
         
         The JSON stream returned by the foursquare API is decoded into Python
         data structures (lists, dictionaries, etc.) and returned by this
@@ -311,9 +315,12 @@ class APIWrapper( object ):
         if aspect:
             path_suffix += "/%s" % aspect
         
-        return self.gateway.query( path_suffix, get_params, userless=userless )
+        if not tenacious:
+            return self.gateway.query( path_suffix, get_params, userless=userless )
+        else:
+            return self.__query_tenaciously( path_suffix, get_params, userless=userless )
         
-    def query_routine( self, resource_type, routine, get_params={}, userless=False ):
+    def query_routine( self, resource_type, routine, get_params={}, userless=False, tenacious=False ):
         """
         Some resources also offer 'routine', which do not require any ID.
         This helps with issuing routine queries to the API.
@@ -332,8 +339,11 @@ class APIWrapper( object ):
             The routine associated with the resource type.
         `get_params`:
             The GET parameters for the query. A dictionary.
-        `userless`
+        `userless`:
             Issue as a userless query rather than an authenticated query.
+        `tenacious`:
+            If True, will query in 'tenacious mode'. See method 
+            `__query_tenaciously`.
         
         The JSON stream returned by the foursquare API is decoded into Python
         data structures (lists, dictionaries, etc.) and returned by this
@@ -343,8 +353,59 @@ class APIWrapper( object ):
         path_suffix = "/%s" % resource_type
         path_suffix += "/%s" % routine
         
-        return self.gateway.query( path_suffix, get_params, userless=userless )
+        if not tenacious:
+            return self.gateway.query( path_suffix, get_params, userless=userless )
+        else:
+            return self.__query_tenaciously( path_suffix, get_params, userless=userless )
+    
+    def __query_tenaciously( self, path_suffix, get_params, userless=False ):
+        """
+        Intermediary helper method to handle tenaciously issuing of queries.
         
+        If errors occur while querying, the method will keep retrying until it 
+        succeeds.
+        Retries will be preceeded by an incremental backoff period. 
+        The following HTTP errors will trigger a retry:
+            500: ('Internal Server Error', 'Server got itself in trouble')
+            501: ('Not Implemented',
+                  'Server does not support this operation')
+            502: ('Bad Gateway', 'Invalid responses from another server/proxy.')
+            503: ('Service Unavailable',
+                  'The server cannot process the request due to a high load')
+            504: ('Gateway Timeout',
+                  'The gateway server did not receive a timely response')
+        Other HTTP errors will *not* trigger a retry; any other
+        general URL errors *will* trigger a retry.
+        All errors that do not trigger a retry are reraised.
+        """
+        backoff = 6.0  # seconds
+        max_backoff = 5.0*60 
+        
+        while True:
+            try:
+                result = self.gateway.query( path_suffix, get_params, userless=userless )
+                return result
+            except urllib2.URLError, e:
+                do_retry = False
+                if hasattr( e, 'reason' ):
+                    # This corresponds to a non-HTTP error. These are
+                    # typically communication issues (e.g., no route to
+                    # host, IP could not be resolved, server not 
+                    # responding, etc.).
+                    do_retry = True
+                if hasattr( e, 'code' ) and e.code in [500,501,502,503,504]:
+                    # This corresponds to a HTTP error whose error code
+                    # is in a select subset of errors.
+                    do_retry = True 
+                
+                if do_retry:
+                    logging.debug('query error due to "%s", sleeping for %d seconds' % (e, backoff))
+                    time.sleep( backoff )
+                    backoff *= 2
+                    backoff = min( [backoff,max_backoff] )
+                else:
+			        raise e
+    
     def find_venues_near( self, lat, long, limit=50 ):
         """
         Call to the venue search method to find venues near a given latitude
@@ -417,7 +478,7 @@ class APIWrapper( object ):
 if __name__ == "__main__":
     import _credentials
     city_code = 'CDF'
-        
+    
     client_id = _credentials.client_id[city_code]
     client_secret = _credentials.client_secret[city_code]
     client_tuples = [(client_id, client_secret)]
@@ -430,6 +491,29 @@ if __name__ == "__main__":
     # acces_tokens: 163 per hour = 1 every 22s
     # client_tups: 600 per hour = 1 every 6s
     
+    logging.basicConfig( filename="_testing.log", level=logging.DEBUG, 
+        datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
+    
+    print 
+    print '## Test tenacious querying'
+    
+    try:
+        data = api.query_resource( "VLARGENvenues", "591313", userless=True, tenacious=True )
+        print "\n",data
+    except Exception,e:
+        print e
+
+    data = api.query_resource( "venues", "591313", userless=True, tenacious=True )
+    print "\n",data
+    
+    data = api.query_routine( "venues", "search", {'ll': '44.3,37.2', 'intent': 'checkin', 'limit': '5'}, tenacious=True )
+    print "\n",data
+    
+    data = api.query_resource( "venues", "591313", userless=True, tenacious=True )
+    print "\n",data
+    
+    print "\n[[ done ]]"
+    exit()
     
     print 
     print "## Compare userless vs. authed results"
