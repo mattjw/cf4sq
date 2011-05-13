@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011 Matthew J Williams & Martin J Chorley
+# Copyright 2011 Martin J Chorley & Matthew J Williams
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,172 +14,235 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-
 from database_wrapper import DBWrapper
 from api import *
-from venues_api import VenueAPIGateway
-from decimal import *
 from urllib2 import HTTPError
 from random import randint
 from datetime import datetime as now
+from shapely.geometry import Point, Polygon
+from exceptions import Exception
+from setproctitle import setproctitle
 import datetime
 import time
 import logging
+import _credentials
 
-def search_venues( lat, lng, delta, city_code, num_venues=6000 ):
-	"""
-	Searches for venues in foursquare. Starts at a given point ('lat,'lng') moving outwards, until the 
-	given 'num_venues' are found. 'delta' is used to tune the distance that searches are made away from a central point.
-	"""
-	import _credentials
-	dbw = DBWrapper()
+class Cell:
+    """
+    An object that represents a geographic cell that may contain venues, specified by a lower
+    left (x, y) coordinate and a width and height. 
 
-	# load credentials
-	client_id = _credentials.sc_client_id
-	client_secret = _credentials.sc_client_secret
-	# use venue gateway not normal gateway so can do 5000 calls an hour
-	gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret )
+    Each cell stores the top left, top right, bottom left and bottom right corners of the cell 
+    as (x, y) coordinates and will store a list of venues found at each of these points. Comparing 
+    the contents of the two lists will reveal if there are points between the corners at which 
+    new venues may be found.
+    """
+    def __init__( self, x, y, width, height ):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
 
-	logging.info('start venue search crawl %s' % city_code)
+        self.bl = Point( x, y )
+        self.tl = Point( x,  y + height )
+        self.br = Point( x + width, y )
+        self.tr = Point( x + width, y + height )
 
-	# coordinates are stored as Decimal objects to prevent stupid rounding/storage errors
-	getcontext().prec = 7
+        # empty lists - will need to be filled for the 'get_children()' method to work
+        self.bl_venues = []
+        self.br_venues = []
+        self.tl_venues = []
+        self.tr_venues = []
 
-	api = APIWrapper( gateway )
-	delta = Decimal(delta)
-	start_points = []
-	checked_points = []
+    def get_children( self ):
+        """
+        Checks the list of venues stored for each corner of the cell. If a venue is found in one
+        corner and not another, there may be a point between the two at which more venues can be 
+        found.
 
-	start_points.append({'lat':Decimal(lat),'lng':Decimal(lng)})
-	logging.info('add start point: (%s, %s)' % (lat, lng))
+        This method will construct and return child cells between the corners that can be checked 
+        later for new venues
+        """
+        # assume no new venues
+        bottom = False
+        top = False
+        left = False 
+        right = False
 
-	# start checking venues
-	check_points( start_points, checked_points, api, delta, dbw, num_venues, city_code )
+        # construct lists of venue names
+        self.bl_venue_ids = []
+        self.tl_venue_ids = []
+        self.tr_venue_ids = []
+        self.br_venue_ids = []
 
-def get_points_surrounding( point, delta ):
-	"""
-	Get the points surrounding the given central 'point' 'delta' distance away 
-	"""
-	points = []
-	points.append( point )
+        for venue in self.bl_venues:
+            self.bl_venue_ids.append(venue['id'])
+        for venue in self.tl_venues:
+            self.tl_venue_ids.append(venue['id'])
+        for venue in self.tr_venues:
+            self.tr_venue_ids.append(venue['id'])
+        for venue in self.br_venues:
+            self.br_venue_ids.append(venue['id'])
 
-	lat = point['lat']
-	lng = point['lng']
+        # look for any venues in one list that are not found in another
+        for venue in self.bl_venues:
+            if not venue['id'] in self.br_venue_ids:
+                logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
+                bottom = True
+                break
+        for venue in self.bl_venues:
+            if not venue['id'] in self.tl_venue_ids:
+                logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
+                left = True
+                break
+        for venue in self.tr_venues:
+            if not venue['id'] in self.br_venue_ids:
+                logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
+                right = True
+                break
+        for venue in self.tr_venues:
+            if not venue['id'] in self.tl_venue_ids:
+                logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
+                top = True
+                break
+        children=[]
 
-	points.append( {'lat':lat, 'lng':lng+delta} )
-	points.append( {'lat':lat+delta, 'lng':lng+delta} )
-	points.append( {'lat':lat+delta, 'lng':lng} )
-	points.append( {'lat':lat+delta, 'lng':lng-delta} )
-	points.append( {'lat':lat, 'lng':lng-delta} )
-	points.append( {'lat':lat-delta, 'lng':lng-delta} )
-	points.append( {'lat':lat-delta, 'lng':lng} )
-	points.append( {'lat':lat-delta, 'lng':lng-delta} )
+        # if we found missing venues, create the child cell
+        if bottom:
+            bcell = Cell( self.x, self.y, self.width/2, self.height/2 )
+            logging.info( u'VEN_SRCH bl child cell added' )
+            logging.info( u'VEN_SRCH coords: %.7f, %.7f' % ( bcell.x, bcell.y ) )
+            children.append(bcell)
+        if left:
+            lcell = Cell( self.x, self.y + self.height/2, self.width/2, self.height/2 )
+            logging.info( u'VEN_SRCH tl child cell added' )
+            logging.info( u'VEN_SRCH coords: %.7f, %.7f' % ( lcell.x, lcell.y ) )
+            children.append(lcell)
+        if right:
+            rcell = Cell( self.x + self.width/2, self.y, self.width/2, self.height/2, )
+            logging.info( u'VEN_SRCH br child cell added' )
+            logging.info( u'VEN_SRCH coords: %.7f, %.7f' % ( rcell.x, rcell.y ) )
+            children.append(rcell)
+        if top:
+            tcell = Cell( self.x + self.width/2, self.y + self.height/2, self.width/2, self.height/2 )
+            logging.info( u'VEN_SRCH tr child cell added' )
+            logging.info( u'VEN_SRCH coords: %.7f, %.7f' % ( tcell.x, tcell.y ) )
+            children.append(tcell)
+        return children
 
-	return points
+def search_venues( city_code ):
+
+    # load the central point
+    centre = _credentials.centres[city_code]
+    centre = Point(centre[0], centre[1])
+    delta = 0.05
+
+    # find the lower left corner of a bounding box
+    x = centre.x - delta
+    y = centre.y - delta
+
+    # create 4 cells split over the area
+    bl_cell = Cell( x, y, delta, delta )
+    tl_cell = Cell( x, y + delta, delta, delta )
+    br_cell = Cell( x + delta, y, delta, delta )
+    tr_cell = Cell( x + delta, y + delta, delta, delta )
+
+    cells = [bl_cell, tl_cell, br_cell, tr_cell]
+
+    # loop over all the cells and search for new venues
+    for cell in cells:
+        logging.info( u'VEN_SRCH cells length: %d' % len( cells ) )
+        children = check_venues(cell, city_code)
+        logging.info( u'VEN_SRCH adding %d child cells' % len( children ) )
+        for c in children:
+            cells.append(c)
+        logging.info( u'VEN_SRCH removing parent cell' )
+        cells.remove(cell)
+        logging.info( u'VEN_SRCH cells length: %d' % len( cells ) )
+        
+
+def check_venues( cell, city_code ):
+    """
+    Check the corners of the cell and search for venues around them
+    """
+    bl = cell.bl
+    tl = cell.tl
+    br = cell.br
+    tr = cell.tr
+
+    cell.bl_venues, success = get_venues_near( bl.x, bl.y, api )
+    logging.info( u'VEN_SRCH bl_venues:' )
+    if success:
+        for venue in cell.bl_venues:
+            dbw.add_venue_to_database( venue, city_code )
+    cell.tl_venues, success = get_venues_near( tl.x, tl.y, api )
+    logging.info( u'VEN_SRCH tl_venues:' )
+    if success:
+        for venue in cell.tl_venues:
+            dbw.add_venue_to_database( venue, city_code )
+    cell.tr_venues, success = get_venues_near( tr.x, tr.y, api )
+    logging.info( u'VEN_SRCH tr_venues:' )
+    if success:
+        for venue in cell.tr_venues:
+            dbw.add_venue_to_database( venue, city_code )
+    cell.br_venues, success = get_venues_near( br.x, br.y, api )
+    logging.info( u'VEN_SRCH br_venues:' )
+    if success:
+        for venue in cell.br_venues:
+            dbw.add_venue_to_database( venue, city_code )
 
 
-def check_points( start_points, checked_points, api, initial_delta, dbw, num_venues, city_code ):
-	"""
-	Find foursquare venues and add them to the database. 
-	"""
-
-	delta = initial_delta
-        venues = dbw.get_all_venues(city_code)
-	# do we have an area to check or have we found enough venues?
-	while start_points and len(dbw.get_all_venues(city_code)) < num_venues:
-		# take a new start point
-		start_point = start_points[randint(0,len(start_points)-1)]
-
-		lat = start_point['lat']
-		lng = start_point['lng']
-
-		logging.info( ' %s: start point: %.7f,%.7f' % (city_code, float(lat), float(lng) ) )
-		# how many venues do we have already?
-		num_venues_pre = dbw.count_venues_in_database()
-		
-		points = get_points_surrounding( start_point, delta )
-
-		# for each point and the surrounding points
-		for point in points:
-			# make sure we haven't already checked it
-			if not point in checked_points:
-				
-				# get the venues in the area
-				venues, success = get_venues_near( point['lat'], point['lng'], api )
-
-				# add the venues to the database
-				if success:
-					for venue in venues:
-						dbw.add_venue_to_database( venue, city_code )
-				
-				# mark this central point as checked
-				checked_points.append( start_point )
-		
-		# how many venues do we have now?
-		num_venues_post = dbw.count_venues_in_database()
-
-		# no new venues, so move to a new start point
-		if num_venues_pre == num_venues_post:
-			logging.info( '%s: no new venues, moving to new start point' % (city_code) )
-			# don't check this point again!
-			point = start_points.pop(0)
-			# reset delta
-			delta = initial_delta
-			logging.info( '%s: point removed: %.7f %.7f' % ( city_code, float( point['lat'] ), float( point['lng'] ) ) )
-			# get some new start points away from this point
-			points = get_points_surrounding( point, delta )
-			for point in points:
-				if not point in start_points and not point in checked_points:
-					start_points.append( point )
-					logging.info( '%s: new start point: %.7f, %.7f' % ( city_code, float( point['lat'] ), float( point['lng'] ) ) )
-		# found new venues, so search this area more
-		else:
-			logging.info( '%s: new venues, keeping start point and decreasing radius' % city_code )
-			delta = delta / 2
-
-		# let us know how we're doing
-		logging.info( '%s: delta: %.6f\n' % (city_code, delta ) )
-		logging.info( '%s: venues: %d\n' % (city_code, len(dbw.get_all_venues(city_code))))
-		logging.info( '%s: start_points: %d\n' % (city_code, len(start_points) ) )
+    return cell.get_children()
 
 def get_venues_near( lat, lng, api ):
-	# try and get some venues, and try and deal with any errors that occur.
-	delay = 1
-	while True:
-		try:
-			venues = api.find_venues_near( lat, lng )
-			return venues, True
-		except HTTPError as e:
-			if e.code in [500,501,502,503,504]:
-				logging.debug('%s error, sleeping for %d seconds' % (e.code, delay))
-				time.sleep(delay)
-				if delay < (60 * 15):
-					delay = delay * 2
-				else:
-					return venues, False
-			if e.code in [400,401,403,404,405]:
-				return venues, False
-				logging.debug('%s error, moving on' % e.code)	
-			logging.debug(e)
-		except Exception as e:
-			logging.debug('General Error, retrying')
-			logging.debug(e)
+    # try and get some venues, and try and deal with any errors that occur.
+    ll_str = "%f,%f" % ( float(lat), float(long) )
+    get_qry = { 'll': ll_str, 'intent': 'checkin', 'limit': limit }
+    while True:
+        try :
+            response = api.query_resource( "venues", "search", get_qry, userless=True, tenacious=True )
+            response = response['response']  # a dict
+            groups = response['groups']  # a list
+            trending = None
+            nearby = None
+            for group in groups:
+                if group['type'] == 'trending':
+                    trending = group  # a three-field dict specifying a collection
+                if group['type'] == 'nearby':
+                    nearby = group  # a three-field dict specifying a collection
+            nearby = nearby['items']  # a list of nearby venues
+            venues = nearby 
+            return venues, True
+        # anything else, record and try again
+        except Exception as e:
+            logging.debug( u'VEN_SRCH General error, moving on' )
+            return response, False
 
 if __name__ == "__main__":
 
-	CDF = ['51.476251', '-3.17509']
-	BRS = ['51.450477', '-2.59466']
-	CAM = ['52.207870', '0.12712']
+    setproctitle('VEN_SRCH')
+    dbw = DBWrapper( )
 
-	crawl_string = 'VENUES_SEARCH_CDF'
-	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
-	search_venues(CDF[0], CDF[1],'0.0050000', 'CDF')
-	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
-	crawl_string = 'VENUES_SEARCH_BRS'
-	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
-	search_venues(BRS[0], BRS[1],'0.0050000', 'BRS')
-	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
-	crawl_string = 'VENUES_SEARCH_CAM'
-	dbw.add_crawl_to_database(crawl_string, 'START', now.now())
-	search_venues(CAM[0], CAM[1],'0.0050000', 'CAM')
-	dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now())
+    # load credentials
+    client_id = _credentials.vs_client_id
+    client_secret = _credentials.vs_client_secret
+    client_tuples = [(client_id, client_secret)]
+    access_tokens = _credentials.vs_access_token
+
+    gateway = APIGateway( access_tokens, 500, client_tuples, 5000 )
+    api = APIWrapper( gateway )
+
+    logging.info( u'VEN_SRCH start venue search crawl' )
+
+    crawl_string = 'VENUE_SEARCH_CDF'
+    dbw.add_crawl_to_database( crawl_string, 'START', now.now( ) )
+    search_venues( 'CDF' )
+    dbw.add_crawl_to_database( crawl_string, 'FINISH', now.now( ) )
+    crawl_string = 'VENUE_SEARCH_BRS'
+    dbw.add_crawl_to_database( crawl_string, 'START', now.now( ) )
+    search_venues( 'BRS' )
+    dbw.add_crawl_to_database( crawl_string, 'FINISH', now.now( ) )
+    crawl_string = 'VENUE_SEARCH_CAM'
+    dbw.add_crawl_to_database( crawl_string, 'START', now.now( ) )
+    search_venues( 'CAM' )
+    dbw.add_crawl_to_database( crawl_string, 'FINISH', now.now( ) )

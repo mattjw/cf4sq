@@ -53,7 +53,7 @@ class CrawlLog( Base ):
         self.date = date
 
     def __repr__( self ):
-        return "<Crawl('%s', '%s', '%s')>" % (self.crawltype, self.flag, self.date)
+        return u"<Crawl('%s', '%s', '%s')>" % ( self.crawltype, self.flag, self.date )
 
 class Location( Base ):
     __tablename__ = 'locations'
@@ -67,7 +67,7 @@ class Location( Base ):
         self.longitude = longitude
 
     def __repr__( self ):
-        return "<Location('%f', '%f')>" % (self.latitude, self.longitude)
+        return u"<Location('%f', '%f')>" % ( self.latitude, self.longitude )
 
 class Statistic( Base ):
     __tablename__ = 'statistics'
@@ -86,7 +86,7 @@ class Statistic( Base ):
         self.users = users
 
     def __repr__( self ):
-        return "<Statistics('%s', '%d', '%d')>" % (self.date, self.checkins, self.users)
+        return u"<Statistics('%s', '%d', '%d')>" % ( self.date, self.checkins, self.users )
 
 class Venue( Base ):
     __tablename__ = 'venues'
@@ -111,7 +111,7 @@ class Venue( Base ):
         self.city_code = city_code
 
     def __repr__( self ):
-        return "<Venue('%s', '%s', '%s', '%s', '%s')>" % (self.name, self.foursq_id, self.location, self.statistics, self.checkins)
+        return u"<Venue('%s', '%s', '%s', '%s', '%s')>" % (self.name, self.foursq_id, self.location, self.statistics, self.checkins)
 
     def get_latest_statistic():
         return statistics[0]
@@ -135,7 +135,7 @@ class User( Base ):
         self.home_city = home_city
 
     def __repr__( self ):
-        return "<User('%s', '%s', '%s', '%s', '%s')" % (self.first_name, self.last_name, self.foursq_id, self.mayorships, self.checkins)
+        return u"<User('%s', '%s', '%s', '%s', '%s')" % (self.first_name, self.last_name, self.foursq_id, self.mayorships, self.checkins)
 
 class Checkin( Base ):
     __tablename__ = 'checkins'
@@ -153,7 +153,7 @@ class Checkin( Base ):
         self.foursq_id = foursq_id
 
     def __repr__( self ):
-        return "<Checkin('%d')>" % (self.created_at)
+        return u"<Checkin('%d')>" % (self.created_at)
 
 class Friendship( Base ):
     """
@@ -203,6 +203,6 @@ class Friendship( Base ):
         self.crawl_id = crawl_id
 
     def __repr__( self ):
-        return "<Friendship('%d, '%d', '%s','%s')>" % ( self.userA_id, self.userB_id, self.date_crawled, self.crawl_id )
+        return u"<Friendship('%d, '%d', '%s','%s')>" % ( self.userA_id, self.userB_id, self.date_crawled, self.crawl_id )
         
     

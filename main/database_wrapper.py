@@ -44,7 +44,7 @@ class DBWrapper( object ):
         # 
         # Logging
         logging.basicConfig( filename="4sq.log", level=logging.DEBUG, 
-        datefmt='%d/%m/%y|%H:%M:%S', format='|%(asctime)s|%(levelname)s| %(message)s'  )
+        datefmt='%d/%m/%y|%H:%M:%S', format=u'|%(asctime)s|%(levelname)s| %(message)s'  )
 
     def get_session( self ):
         return self.session
@@ -90,12 +90,12 @@ class DBWrapper( object ):
         """
         l = self.session.query( Location ).filter( Location.latitude==loc.get( 'lat' ) ).filter( Location.longitude==loc.get( 'lng' ) ).first( )
         if l == None:
-            logging.info( 'Location not found in database: %.5f, %.5f' % ( loc.get( 'lat' ), loc.get( 'lng' ) ) )
+            logging.info( u'DBW Location not found in database: %.5f, %.5f' % ( loc.get( 'lat' ), loc.get( 'lng' ) ) )
             l = Location( latitude=loc.get( 'lat' ), longitude=loc.get( 'lng' ) )
             self.session.add( l )
             self.session.commit( )
         else:
-            logging.info( 'Location already in database: %.5f, %.5f' % ( l.latitude, l.longitude ) )
+            logging.info( u'DBW Location already in database: %.5f, %.5f' % ( l.latitude, l.longitude ) )
         return l
         
     
@@ -111,7 +111,7 @@ class DBWrapper( object ):
         Output  Statistics object
         """
         s = Statistic( venue.id, now.now( ), stats['checkinsCount'], stats['usersCount'] )
-        logging.info('Statistics added: %d checkins, %d users' %  (stats['checkinsCount'], stats['usersCount']) )
+        logging.info(u'DBW Statistics added: %d checkins, %d users' %  (stats['checkinsCount'], stats['usersCount']) )
         self.session.add( s )
         self.session.commit( )
         return s
@@ -222,7 +222,7 @@ class DBWrapper( object ):
         """
         v = self.get_venue_from_database( venue )
         if v == None:
-            logging.info( 'Venue not in database: %s' % ( venue.get( 'name' ).encode( 'utf-8' ) ) )
+            logging.info( u'DBW Venue not in database: %s' % ( venue.get( 'name' ) ) )
 
             loc = venue['location']
             l = self.add_location_to_database( loc )
@@ -242,7 +242,7 @@ class DBWrapper( object ):
             self.add_statistics_to_database( v, stat )
             self.session.commit( )
         else:
-            logging.info( 'Venue already in database: %s' % (v.name).encode( 'utf-8' ) )
+            logging.info( u'DBW Venue already in database: %s' % (v.name) )
         return v
     
     def get_venue_by_name( self, name ):
@@ -301,7 +301,7 @@ class DBWrapper( object ):
         Output  
             a list of Venue objects
         """
-        
+        #venues = self.session.query(Venue).filter(len(Venue.checkins) > 0).all()
         stmt = """SELECT * 
                   FROM venues 
                   WHERE EXISTS
@@ -323,7 +323,7 @@ class DBWrapper( object ):
         else:
             return False
 
-    def get_all_venues( self, citycode ):
+    def get_venues_in_city( self, citycode ):
         """
         Retrieves all venues from the database with the given citycode
 
@@ -349,7 +349,7 @@ class DBWrapper( object ):
         """
         c = self.get_checkin_from_database( checkin )
         if c == None:
-            logging.info( 'Checkin not found in database' )
+            logging.info( u'DBW Checkin not found in database' )
             c = Checkin( foursq_id=checkin.get( 'id' ), created_at=checkin.get( 'createdAt' ) )
             user = checkin.get( 'user' )
             
@@ -361,7 +361,7 @@ class DBWrapper( object ):
             c.venue = venue
             c.venue_id = venue.id
         else:
-            logging.info( 'Checkin found in database' )
+            logging.info( u'DBW Checkin found in database' )
         self.session.add( c )
         self.session.commit( )
         
@@ -410,12 +410,12 @@ class DBWrapper( object ):
             if not user.has_key('lastName'):
                 user['lastName'] = ''
             
-            logging.info( 'User not found in database: %s %s' % ( user.get( 'firstName' ).encode('utf-8'), user.get( 'lastName' ).encode('utf-8') ) )
+            logging.info( u'DBW User not found in database: %s %s' % ( user.get( 'firstName' ), user.get( 'lastName' ) ) )
             u = User( foursq_id=user.get( 'id' ), first_name=user.get( 'firstName' ), last_name=user.get( 'lastName' ), gender=user.get( 'gender' ), home_city=user.get( 'homeCity' ) )
             self.session.add( u )
             self.session.commit( )
         else:
-            logging.info( 'User found in database: %s %s' % ( u.first_name.encode('utf-8'), u.last_name.encode('utf-8') ) )
+            logging.info( u'DBW User found in database: %s %s' % ( u.first_name, u.last_name ) )
         return u
         
     def get_all_users_with_checkins( self ):
