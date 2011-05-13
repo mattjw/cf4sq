@@ -111,7 +111,7 @@ class Venue( Base ):
         self.city_code = city_code
 
     def __repr__( self ):
-        return u"<Venue('%s', '%s', '%s', '%s', '%s')>" % (self.name, self.foursq_id, self.location, self.statistics, self.checkins)
+        return u"<Venue('%s', '%s', '%s')>" % (self.name, self.foursq_id, self.location)
 
     def get_latest_statistic():
         return statistics[0]
