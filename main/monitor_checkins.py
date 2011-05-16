@@ -15,131 +15,125 @@
 #   limitations under the License.
 
 from database_wrapper import DBWrapper
-from venues_api import VenueAPIGateway
 from urllib2 import HTTPError
 from api import *
 from exceptions import Exception
 from shapely.geometry import Point, Polygon
 from datetime import datetime as now
-import math
+from setproctitle import setproctitle
 import logging
 import sys
 
 """
-Uses the Shapely package for doing testing of whether a point is within a given search location. 
+Monitor Checkin script.
 
-Shapely can be obtained by the usual python methods (easy_install etc) but does rely on the GEOS framework. 
-OS X users can obtain a port of GEOS here: http://www.kyngchaos.com/software:frameworks
+This will loop through all the venues for a city and look for checkins. The city to be checked
+is determined by the 'city_code' command line argument, which should match a city code that can
+be found in the database.
+
+Checks the venue is active before checking the venue, and checks the location falls within a 
+circular area of a given size around a central point of the city. This uses the Shapely package 
+for doing testing of whether a point is within a given polygon. Shapely can be obtained by the 
+usual python methods (easy_install etc) but relies on the GEOS  framework. OS X users can obtain 
+a port of GEOS here: http://www.kyngchaos.com/software:frameworks
 """
 
-def get_venue_details( id ):
-	delay = 1
-	while True:
-		try :
-			response = venue_api.query_resource( "venues", id )
-			return response, True
-		except HTTPError as e:
-			if e.code in [500,501,502,503,504]:
-				logging.debug('%s error, sleeping for %d seconds' % (e.code, delay))
-				time.sleep(delay)
-				if delay < (60 * 15):
-					delay = delay * 2
-				else:
-					return response, False
-			if e.code in [400,401,403,404,405]:
-				return response, False
-				logging.debug('%s error, moving on' % e.code)	
-			logging.debug(e)
-		except Exception as e:
-			logging.debug('General Error, retrying')
-			logging.debug(e)
-
-def point_inside_polygon(point,poly):
-	return poly.contains(point)
+def get_venue_details( id, aspect=None, userless=False ):
+    """
+    wrapper routine to call the venues API. 
+    """
+    while True:
+        try :
+            response = api.query_resource( "venues", id, aspect=aspect, userless=userless, tenacious=True )
+            return response, True
+        # anything else, record and try again
+        except Exception as e:
+            logging.debug( u'CHK_MON General error, moving on' )
+            return response, False
 
 if __name__ == "__main__":
 
-	import _credentials
-	dbw = DBWrapper()
-	#
-	# Input & args
-	args = sys.argv
+    import _credentials
+    dbw = DBWrapper( )
 
-	if len(args) is not 2:
-		print "Incorrect number of arguments"
-		print "Argument pattern: city_code"
-		exit(1)
-	else:
-		city_code = args[1]
+    #
+    # Input & args
+    args = sys.argv
 
-	logging.info('Restarted monitor_checkins.py')
-	logging.info('Running with city_code: %s' % city_code)
+    if len(args) is not 2:
+        print "Incorrect number of arguments - please supply city_code"
+        exit(1)
+    else:
+        city_code = args[1]
 
-	# load credentials
-	client_id = _credentials.client_id[city_code]
-	client_secret = _credentials.client_secret[city_code]
-	access_tokens = _credentials.access_tokens[city_code]
+    logging.info( u'CHK_MON Restarted monitor_checkins.py' )
+    logging.info( u'CHK_MON Running with city_code: %s' % city_code )
+    setproctitle( u'CHK_MON %s' % city_code )
 
-	logging.info('%s client_id: %s' % (city_code, client_id))
-	logging.info('%s client_secret: %s' % (city_code, client_secret))
-	logging.info('%s access_tokens: %s' % (city_code, access_tokens[0]))
+    # load credentials
+    client_id = _credentials.client_id[city_code]
+    client_secret = _credentials.client_secret[city_code]
+    client_tuples = [(client_id, client_secret)]
+    access_tokens = _credentials.access_tokens[city_code]
 
-	centres = {'CDF' : Point(51.476251, -3.17509), 'BRS' : Point(51.450477, -2.59466), 'CAM' : Point(52.207870, 0.12712)}
-	centre = centres[city_code]
+    gateway = APIGateway( access_tokens, 500, client_tuples, 5000 )
+    api = APIWrapper( gateway )
 
-	logging.info('%s centre: %s' % (city_code, centre))
+    logging.info( u'CHK_MON %s client_id: %s' % ( city_code, client_id ) )
+    logging.info( u'CHK_MON %s client_secret: %s' % ( city_code, client_secret ) )
+    logging.info( u'CHK_MON %s access_tokens: %s' % ( city_code, access_tokens[0] ) )
+    logging.info( u'CHK_MON %s api gateways initialised' % city_code )
 
-	# use venue gateway not normal gateway so can do more than 500 calls an hour
-	venues = dbw.get_all_venues()
-	venue_gateway = VenueAPIGateway( client_id=client_id, client_secret=client_secret, token_hourly_query_quota=5000 )
-	gateway = APIGateway( access_tokens=access_tokens, token_hourly_query_quota=500 )
+    # get the centre point for the city and construct a bounding area
+    centre = _credentials.centres[city_code]
+    centre = Point(centre[0], centre[1])
+    logging.info( u'CHK_MON %s centre: %s' % ( city_code, centre ) )
 
-	api = APIWrapper( gateway )
-	venue_api = APIWrapper( venue_gateway )
+    polygon = centre.buffer( 0.25, resolution=20 )
+    logging.info( u'CHK_MON %s bounding polygon: %s' % ( city_code, polygon ) )
 
-	logging.info('%s api gateways initialised' % city_code)
+    # retrieve the list of venues from the database
+    venues = dbw.get_venues_in_city( city_code )
+    logging.info( u'CHK_MON retrieved %d venues from database for %s' % ( len(venues), city_code ) )
 
-	polygon = centre.buffer(0.25, resolution=20)
-
-	logging.info('%s bounding polygon: %s' % (city_code, polygon))
-
-	while True:
-		count_venues = 0
-		count_checkins = 0
-		count_venues_with_checkins = 0
-		logging.info('start running checkin crawl in %s' % city_code)
-		crawl_string = 'MONITOR_CHECKINS_' + city_code
-		dbw.add_crawl_to_database(crawl_string, 'START', now.now())
-		for venue in venues:
-			if venue.city_code == city_code:
-				if dbw.is_active(venue):
-					location = venue.location
-					lat = location.latitude
-					lng = location.longitude
-					point = Point(lat,lng)
-					if point_inside_polygon(point, polygon):
-						logging.info( '%s: retrieve details for venue: %s' % ( city_code, venue.name.encode('utf-8') ) )
-						response = get_venue_details( venue.foursq_id )
-						count_venues = count_venues + 1
-						v = response.get( 'response' )
-						v = v.get( 'venue' )
-						hereNow = v.get( 'hereNow' )
-						count = hereNow.get( 'count' )
-						logging.info( '%s: checkins found: %d' % ( city_code, count ) )
-						if count > 0:
-							count_venues_with_checkins = count_venues_with_checkins + 1
-							response = api.query_resource( "venues", venue.foursq_id, "herenow" )
-							hereNow = response['response']
-							hereNow = hereNow['hereNow']
-							items = hereNow['items']
-							for item in items:
-								count_checkins = count_checkins + 1
-								logging.info( '%s: Adding checkin' % city_code )
-								dbw.add_checkin_to_database(item, venue)
-		dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now( ))
-		logging.info( '%s venues checked: %d' % ( city_code, count_venues ) )
-		logging.info( '%s venues with checkins: %d' % ( city_code, count_venues_with_checkins ) )
-		logging.info( '%s checkins: %d' % ( city_code, count_checkins ) )
-
-	
-
+    # loop forever checking the venues for checkins
+    while True:
+        count_venues = 0
+        count_checkins = 0
+        count_venues_with_checkins = 0
+        logging.info( u'CHK_MON start running checkin crawl in %s' % city_code )
+        # log the start of a crawl
+        crawl_string = 'MONITOR_CHECKINS_' + city_code
+        dbw.add_crawl_to_database( crawl_string, 'START', now.now( ) )
+        for venue in venues:
+            if dbw.is_active( venue ):
+                location = venue.location
+                lat = location.latitude
+                lng = location.longitude
+                point = Point(lat,lng)
+                if polygon.contains(point):
+                    logging.info( u'CHK_MON %s: retrieve details for venue: %s' % ( city_code, venue.name ) )
+                    response, success = get_venue_details( venue.foursq_id, userless=True )
+                    if success:
+                        count_venues = count_venues + 1
+                        v = response.get( 'response' )
+                        v = v.get( 'venue' )
+                        hereNow = v.get( 'hereNow' )
+                        count = hereNow.get( 'count' )
+                        logging.info( u'CHK_MON %s: checkins found: %d' % ( city_code, count ) )
+                        if count > 0:
+                            count_venues_with_checkins = count_venues_with_checkins + 1
+                            response, success = get_venue_details( venue.foursq_id, aspect="herenow", userless=False )
+                            if success:
+                                hereNow = response['response']
+                                hereNow = hereNow['hereNow']
+                                items = hereNow['items']
+                                for item in items:
+                                    count_checkins = count_checkins + 1
+                                    logging.info( u'CHK_MON %s: Adding checkin' % city_code )
+                                    dbw.add_checkin_to_database(item, venue )
+        # log the end of the crawl
+        dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now( ) )
+        logging.info( u'CHK_MON %s venues checked: %d' % ( city_code, count_venues ) )
+        logging.info( u'CHK_MON %s venues with checkins: %d' % ( city_code, count_venues_with_checkins ) )
+        logging.info( u'CHK_MON %s checkins: %d' % ( city_code, count_checkins ) )

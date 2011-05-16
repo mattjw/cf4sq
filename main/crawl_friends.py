@@ -22,8 +22,6 @@ checked in at least once.
 Some friends may have not been seen by the checking monitor before. These
 are added to the users table.
 """
-
-
 from database_wrapper import DBWrapper
 from urllib2 import HTTPError, URLError
 from api import *

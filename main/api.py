@@ -406,41 +406,6 @@ class APIWrapper( object ):
                 else:
 			        raise e
     
-    def find_venues_near( self, lat, long, limit=50 ):
-        """
-        Call to the venue search method to find venues near a given latitude
-        and longitude.
-        
-        `lat` and `long` can be numbers or strings containing numbers.
-        
-        The venue search method also returns 'trending' places. These are
-        discarded.
-        
-        Returns a ~?~.
-        """
-        #
-        # Issue query... 
-        ll_str = "%f,%f" % ( float(lat), float(long) )
-        get_qry = { 'll': ll_str, 'intent': 'checkin', 'limit': limit }
-        data = self.query_routine( "venues", "search", get_qry )
-        
-        #
-        # Parse hierarchy to grab list of venues...
-        response = data['response']  # a dict
-        groups = response['groups']  # a list
-        
-        trending = None
-        nearby = None
-        for group in groups:
-            if group['type'] == 'trending':
-                trending = group  # a three-field dict specifying a collection
-            if group['type'] == 'nearby':
-                nearby = group  # a three-field dict specifying a collection
-        
-        nearby = nearby['items']  # a list of nearby venues
-        venues = nearby 
-        return venues
-    
     def get_friends_of( self, user_id ):
         """
         Get the friends of a particular user.
@@ -603,4 +568,3 @@ if __name__ == "__main__":
     venues = api.find_venues_near( 51.4777, -3.1844 )
     for v in venues:
         print v['name']
-    
