@@ -22,10 +22,53 @@ from datetime import datetime as now
 from shapely.geometry import Point, Polygon
 from exceptions import Exception
 from setproctitle import setproctitle
-import datetime
 import time
 import logging
 import _credentials
+
+class Location:
+    def __init__( self, x, y ):
+        self.x = x
+        self.y = y
+        self.venues = []
+        self.checked = False
+
+    def get_venues_near( self, api ):
+        lat = self.x
+        lng = self.y
+        # try and get some venues, and try and deal with any errors that occur.
+        ll_str = "%f,%f" % ( float(lat), float(lng) )
+        get_qry = { 'll': ll_str, 'intent': 'checkin', 'limit': limit }
+        try :
+            response = api.query_routine( "venues", "search", get_params=get_qry, userless=True, tenacious=True )
+            response = response['response']  # a dict
+            groups = response['groups']  # a list
+            trending = None
+            nearby = None
+            for group in groups:
+                if group['type'] == 'trending':
+                    trending = group  # a three-field dict specifying a collection
+                if group['type'] == 'nearby':
+                    nearby = group  # a three-field dict specifying a collection
+            nearby = nearby['items']  # a list of nearby venues
+            self.venues = nearby
+            self.checked = True
+            return self.venues, self.checked
+        # anything else, record and try again
+        except Exception as e:
+            print e
+            logging.debug( u'VEN_SRCH general error, moving on' )
+            return self.venues, self.checked
+
+    def get_venues( self, api ):
+        if self.checked:
+            return self.venues
+        else:
+            while not self.checked:
+                self.get_venues_near( api )
+            return self.venues
+
+
 
 class Cell:
     """
@@ -38,21 +81,14 @@ class Cell:
     new venues may be found.
     """
     def __init__( self, x, y, width, height ):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
 
-        self.bl = Point( x, y )
-        self.tl = Point( x,  y + height )
-        self.br = Point( x + width, y )
-        self.tr = Point( x + width, y + height )
+        self.bl = Location( x, y )
+        self.tl = Location( x,  y + height )
+        self.br = Location( x + width, y )
+        self.tr = Location( x + width, y + height )
 
-        # empty lists - will need to be filled for the 'get_children()' method to work
-        self.bl_venues = []
-        self.br_venues = []
-        self.tl_venues = []
-        self.tr_venues = []
+    def get_locations( self ):
+        return self.bl, self.tl, self.br, self.tr
 
     def get_children( self ):
         """
@@ -75,32 +111,32 @@ class Cell:
         self.tr_venue_ids = []
         self.br_venue_ids = []
 
-        for venue in self.bl_venues:
+        for venue in self.bl.venues:
             self.bl_venue_ids.append(venue['id'])
-        for venue in self.tl_venues:
+        for venue in self.tl.venues:
             self.tl_venue_ids.append(venue['id'])
-        for venue in self.tr_venues:
+        for venue in self.tr.venues:
             self.tr_venue_ids.append(venue['id'])
-        for venue in self.br_venues:
+        for venue in self.br.venues:
             self.br_venue_ids.append(venue['id'])
 
         # look for any venues in one list that are not found in another
-        for venue in self.bl_venues:
+        for venue in self.bl.venues:
             if not venue['id'] in self.br_venue_ids:
                 logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
                 bottom = True
                 break
-        for venue in self.bl_venues:
+        for venue in self.bl.venues:
             if not venue['id'] in self.tl_venue_ids:
                 logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
                 left = True
                 break
-        for venue in self.tr_venues:
+        for venue in self.tr.venues:
             if not venue['id'] in self.br_venue_ids:
                 logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
                 right = True
                 break
-        for venue in self.tr_venues:
+        for venue in self.tr.venues:
             if not venue['id'] in self.tl_venue_ids:
                 logging.info( u'VEN_SRCH %s venue not found' % venue['name'] )
                 top = True
@@ -168,7 +204,13 @@ def check_venues( cell, city_code ):
     bl = cell.bl
     tl = cell.tl
     br = cell.br
-    tr = cell.tr
+    tr = cell.tr                 
+
+    cells = [bl,tl,br,tr]
+
+    for corner in cells:
+
+
 
     cell.bl_venues, success = get_venues_near( bl.x, bl.y, api )
     logging.info( u'VEN_SRCH bl_venues:' )
@@ -191,32 +233,7 @@ def check_venues( cell, city_code ):
         for venue in cell.br_venues:
             dbw.add_venue_to_database( venue, city_code )
 
-
     return cell.get_children()
-
-def get_venues_near( lat, lng, api ):
-    # try and get some venues, and try and deal with any errors that occur.
-    ll_str = "%f,%f" % ( float(lat), float(long) )
-    get_qry = { 'll': ll_str, 'intent': 'checkin', 'limit': limit }
-    while True:
-        try :
-            response = api.query_resource( "venues", "search", get_qry, userless=True, tenacious=True )
-            response = response['response']  # a dict
-            groups = response['groups']  # a list
-            trending = None
-            nearby = None
-            for group in groups:
-                if group['type'] == 'trending':
-                    trending = group  # a three-field dict specifying a collection
-                if group['type'] == 'nearby':
-                    nearby = group  # a three-field dict specifying a collection
-            nearby = nearby['items']  # a list of nearby venues
-            venues = nearby 
-            return venues, True
-        # anything else, record and try again
-        except Exception as e:
-            logging.debug( u'VEN_SRCH General error, moving on' )
-            return response, False
 
 if __name__ == "__main__":
 

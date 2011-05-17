@@ -399,7 +399,7 @@ class APIWrapper( object ):
                     do_retry = True 
                 
                 if do_retry:
-                    logging.debug('query error due to "%s", sleeping for %d seconds' % (e, backoff))
+                    logging.debug('API query error due to "%s", sleeping for %d seconds' % (e, backoff))
                     time.sleep( backoff )
                     backoff *= 2
                     backoff = min( [backoff,max_backoff] )

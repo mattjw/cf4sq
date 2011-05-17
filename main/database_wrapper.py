@@ -317,7 +317,13 @@ class DBWrapper( object ):
 
         Output:  True/False depending on if the venue is active
         """
-        # need more than 1 statistic to figure out if the venue is active
+        if len(venue.checkins) > 0:
+            return True
+        else:
+            for i, stat in enumerate(venue.statistics):
+                if i > 0:
+                    if venue.statistics[i].checkins > venue.statistics[i-1].checkins:
+                        return True
         if len(venue.statistics) > 1:
             return venue.statistics[0].checkins < venue.statistics[-1].checkins
         else:

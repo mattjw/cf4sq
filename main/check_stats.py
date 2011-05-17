@@ -30,8 +30,9 @@ def get_venue_details( id ):
             response = api.query_resource( "venues", id, userless=True, tenacious=True )
             return response, True
         except Exception as e:
-            logging.debug( u'STAT_CHK General Error, retrying' )
+            logging.debug( u'STAT_CHK Error (Venue deletion/Foursquare down?), moving on. ' )
             logging.debug( e )
+            return response, False
 
 
 if __name__ == "__main__":
@@ -63,7 +64,9 @@ if __name__ == "__main__":
             v = v.get( 'venue' )
             stats = v.get( 'stats' )
             dbw.add_statistics_to_database( venue,stats )
-            logging.info( u'STAT_CHK %s: checkins found: %d' % ( venue.city_code, stats['checkinsCount'] ) )   
+            logging.info( u'STAT_CHK %s: checkins found: %d' % ( venue.city_code, stats['checkinsCount'] ) )
+        else:
+            logging.info( u'STAT_CHK %s: Error for venue: %s, id: %s' % ( venue.city_code, venue.name, venue.foursq_id ) )
     logging.info( u'STAT_CHK venues checked: %d' % ( count_venues ) )
 
     dbw.add_crawl_to_database( crawl_string, 'FINISH', now.now( ) )

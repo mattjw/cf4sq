@@ -43,12 +43,13 @@ def get_venue_details( id, aspect=None, userless=False ):
     wrapper routine to call the venues API. 
     """
     while True:
+        response = ''
         try :
             response = api.query_resource( "venues", id, aspect=aspect, userless=userless, tenacious=True )
             return response, True
         # anything else, record and try again
         except Exception as e:
-            logging.debug( u'CHK_MON General error, moving on' )
+            logging.debug( u'CHK_MON Error (Venue deletion/Foursquare down?), moving on. ' )
             return response, False
 
 if __name__ == "__main__":
@@ -132,6 +133,8 @@ if __name__ == "__main__":
                                     count_checkins = count_checkins + 1
                                     logging.info( u'CHK_MON %s: Adding checkin' % city_code )
                                     dbw.add_checkin_to_database(item, venue )
+                    else:
+                        logging.info( u'STAT_CHK %s: Error for venue: %s, id: %s' % ( venue.city_code, venue.name, venue.foursq_id ) )
         # log the end of the crawl
         dbw.add_crawl_to_database(crawl_string, 'FINISH', now.now( ) )
         logging.info( u'CHK_MON %s venues checked: %d' % ( city_code, count_venues ) )
